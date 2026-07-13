@@ -15,7 +15,7 @@ function loadDB() {
     if (raw) { DB = JSON.parse(raw); migrateDB(); return; }
   } catch (e) { /* تجاهل وأعد البذر */ }
   DB = hseSeed();
-  saveDB();
+  migrateDB();
 }
 
 // ترقية قواعد بيانات النسخ السابقة دون فقدان بياناتها
@@ -88,12 +88,16 @@ function migrateDB() {
 function canCreate() {
   if (!CLOUD.enabled()) return true;
   const e = sessionEmployee();
-  return !!(e && (e.role === 'admin' || e.role === 'creator'));
+  if (!e) return false;
+  const f = roleFlags(e.role);
+  return e.role === 'admin' || e.role === 'creator' || !!(f && f.canCreate);
 }
 function canInspect() {
   if (!CLOUD.enabled()) return true;
   const e = sessionEmployee();
-  return !!(e && (e.role === 'admin' || e.role === 'creator' || e.role === 'inspector'));
+  if (!e) return false;
+  const f = roleFlags(e.role);
+  return e.role === 'admin' || e.role === 'creator' || e.role === 'inspector' || !!(f && (f.canInspect || f.canCreate));
 }
 function blockedCard(msg) {
   return `<div class="card card-pad"><div class="empty">${icon('shield', 30)} ${msg}</div></div>`;
@@ -133,6 +137,84 @@ function loginPinFor(emp) {
 }
 // الدخول مطلوب في الوضع السحابي فقط — الوضع المحلي يبقى تجريبيًا مفتوحًا
 function loginRequired() { return CLOUD.enabled() && !sessionEmployee(); }
+
+/* ---------------- اللغة: عربي / English ---------------- */
+let LANG = 'ar';
+try { LANG = localStorage.getItem('hse_lang') || 'ar'; } catch (e) { /* */ }
+
+const I18N = {
+  dash: ['لوحة التحكم', 'Dashboard'],
+  permits: ['تصاريح العمل', 'Work Permits'],
+  equipment: ['فحص المعدات', 'Equipment'],
+  risk: ['تقييم المخاطر', 'Risk Assessment'],
+  team: ['إدارة الموظفين', 'Employees'],
+  files: ['ملفات المشروع', 'Project Files'],
+  newPermit: ['تصريح جديد', 'New Permit'],
+  newBtn: ['جديد', 'New'],
+  tabDash: ['اللوحة', 'Home'],
+  tabPermits: ['التصاريح', 'Permits'],
+  tabEq: ['المعدات', 'Equipment'],
+  tabRisk: ['المخاطر', 'Risk'],
+  st_pending: ['قيد الموافقة', 'PENDING'],
+  st_approved: ['معتمد', 'APPROVED'],
+  st_rejected: ['مرفوض', 'REJECTED'],
+  st_closed: ['مغلق', 'CLOSED'],
+  st_extended: ['مُمدَّد', 'EXTENDED'],
+  kpiActive: ['تصاريح سارية', 'Active permits'],
+  kpiPending: ['قيد الموافقة', 'Awaiting approval'],
+  kpiEq: ['معدات تحتاج فحص', 'Equipment due'],
+  kpiClosed: ['أُغلقت هذا الأسبوع', 'Closed this week'],
+  awaitingYou: ['بانتظار توقيعك', 'Awaiting your signature'],
+  myPending: ['تصاريحك قيد الموافقة', 'Your pending permits'],
+  latest: ['أحدث التصاريح', 'Latest permits'],
+  viewAll: ['عرض الكل', 'View all'],
+  signApprove: ['توقيع واعتماد', 'Sign & Approve'],
+  rejectNote: ['رفض مع ملاحظة', 'Reject with note'],
+  extend: ['تمديد التصريح', 'Extend'],
+  closePermit: ['إغلاق التصريح', 'Close permit'],
+  printPdf: ['PDF / طباعة', 'Print / PDF'],
+  copyLink: ['نسخ الرابط', 'Copy link'],
+  archiveDrive: ['أرشفة PDF إلى Drive', 'Archive PDF to Drive'],
+  login: ['تسجيل الدخول', 'Sign in'],
+  logout: ['تسجيل الخروج', 'Sign out'],
+  profile: ['الملف الشخصي', 'My Profile'],
+  name: ['الاسم', 'Name'],
+  pin: ['الرمز الشخصي (PIN)', 'Personal PIN'],
+  enter: ['دخول', 'Sign in'],
+  next: ['التالي', 'Next'],
+  back: ['رجوع', 'Back'],
+  send: ['إرسال للموافقات', 'Submit for approval'],
+  approvals: ['سلسلة الموافقات', 'Approval chain'],
+  checklist: ['التشيك لست', 'Checklist'],
+  addItem: ['إضافة بند', 'Add item'],
+  search: ['بحث… (كود / وصف / مبنى)', 'Search… (code / description)'],
+};
+function tr(k) {
+  const e = I18N[k];
+  return e ? (LANG === 'en' ? e[1] : e[0]) : k;
+}
+function applyLangChrome() {
+  document.documentElement.lang = LANG === 'en' ? 'en' : 'ar';
+  document.documentElement.dir = LANG === 'en' ? 'ltr' : 'rtl';
+  const navMap = { dash: tr('dash'), permits: tr('permits'), equipment: tr('equipment'), risk: tr('risk'), team: tr('team'), files: tr('files'), new: tr('newPermit') };
+  const tabMap = { dash: tr('tabDash'), permits: tr('tabPermits'), equipment: tr('tabEq'), risk: tr('tabRisk'), new: tr('newBtn') };
+  $$('.side-nav .js-nav').forEach(a => setNavText(a, navMap[a.dataset.nav]));
+  $$('.tab-bar .js-nav').forEach(a => setNavText(a, tabMap[a.dataset.nav]));
+  const lb = $('#lang-btn');
+  if (lb) lb.textContent = LANG === 'en' ? 'ع' : 'EN';
+}
+function setNavText(a, label) {
+  if (!label) return;
+  for (const n of a.childNodes) {
+    if (n.nodeType === 3 && n.textContent.trim()) { n.textContent = label; return; }
+  }
+  a.appendChild(document.createTextNode(label));
+}
+function toggleLang() {
+  LANG = LANG === 'en' ? 'ar' : 'en';
+  try { localStorage.setItem('hse_lang', LANG); } catch (e) { /* */ }
+  applyLangChrome(); buildRoleSwitcher(); render();
+}
 
 const INSP_RESULTS = {
   fit: { en: 'FIT', ar: 'صالحة للعمل', cls: 'pass' },
@@ -189,11 +271,25 @@ const STATUS_META = {
 function stampHTML(p, big = false) {
   const s = permitStatus(p);
   const m = STATUS_META[s];
-  const ext = (s === 'approved' && p.extension) ? ` <span class="stamp ${big ? 'big ' : ''}st-extended">مُمدَّد</span>` : '';
-  return `<span class="stamp ${big ? 'big ' : ''}${m.cls}">${m.ar}</span>${ext}`;
+  const ext = (s === 'approved' && p.extension) ? ` <span class="stamp ${big ? 'big ' : ''}st-extended">${tr('st_extended')}</span>` : '';
+  return `<span class="stamp ${big ? 'big ' : ''}${m.cls}">${tr('st_' + s)}</span>${ext}`;
+}
+/* الأدوار المخصصة — يخزنها الأدمن في سجل إعدادات خاص يتزامن كأي كيان */
+function rolesConfig() {
+  return DB.employees.find(e => e.id === '_roles') || null;
+}
+function customRoles() {
+  const c = rolesConfig();
+  return (c && c.list) || [];
+}
+function allTeamRoles() {
+  return HSE.teamRoles.concat(customRoles().map(r => ({ key: r.key, ar: r.ar, duty: true, custom: true })));
+}
+function roleFlags(key) {
+  return customRoles().find(r => r.key === key) || null;
 }
 function roleAr(key) {
-  const r = HSE.teamRoles.find(r => r.key === key);
+  const r = allTeamRoles().find(r => r.key === key);
   return r ? r.ar : key;
 }
 // الموظف النشط المعيّن على الدور
@@ -335,33 +431,33 @@ function viewDashboard() {
   return `
   <div class="page-head">
     <div class="grow">
-      <div class="page-title">لوحة التحكم</div>
+      <div class="page-title">${tr('dash')}</div>
       <div class="page-sub">${esc(HSE.project.siteAr)} — ${fmtDate(new Date().toISOString())}</div>
     </div>
-    <a class="btn btn-amber" href="#/permits/new">${icon('plus', 16)} تصريح جديد</a>
+    <a class="btn btn-amber" href="#/permits/new">${icon('plus', 16)} ${tr('newPermit')}</a>
   </div>
 
   <div class="kpis">
-    <div class="kpi" style="--kc:var(--green)"><div class="n">${active.length}</div><div class="l">تصاريح سارية</div><div class="s">معتمدة وضمن مدتها</div></div>
-    <div class="kpi" style="--kc:var(--amber)"><div class="n">${pending.length}</div><div class="l">قيد الموافقة</div><div class="s">في سلسلة التواقيع</div></div>
-    <div class="kpi" style="--kc:var(--red)"><div class="n">${lateEq.length}</div><div class="l">معدات تحتاج فحص</div><div class="s">متأخرة أو موقوفة</div></div>
-    <div class="kpi" style="--kc:var(--slate)"><div class="n">${closedWeek.length}</div><div class="l">أُغلقت هذا الأسبوع</div><div class="s">مكتملة ومؤرشفة</div></div>
+    <div class="kpi" style="--kc:var(--green)"><div class="n">${active.length}</div><div class="l">${tr('kpiActive')}</div><div class="s">معتمدة وضمن مدتها</div></div>
+    <div class="kpi" style="--kc:var(--amber)"><div class="n">${pending.length}</div><div class="l">${tr('kpiPending')}</div><div class="s">في سلسلة التواقيع</div></div>
+    <div class="kpi" style="--kc:var(--red)"><div class="n">${lateEq.length}</div><div class="l">${tr('kpiEq')}</div><div class="s">متأخرة أو موقوفة</div></div>
+    <div class="kpi" style="--kc:var(--slate)"><div class="n">${closedWeek.length}</div><div class="l">${tr('kpiClosed')}</div><div class="s">مكتملة ومؤرشفة</div></div>
   </div>
 
   ${role !== 'creator' ? `
   <div class="card" style="margin-top:14px">
-    <div class="card-head">${icon('pen', 17)} بانتظار توقيعك <span class="chip">${roleAr(role)}</span><span class="spacer"></span></div>
+    <div class="card-head">${icon('pen', 17)} ${tr('awaitingYou')} <span class="chip">${roleAr(role)}</span><span class="spacer"></span></div>
     ${myTurn.length ? `<div class="row-list">${myTurn.map(rowPermit).join('')}</div>`
       : `<div class="empty">${icon('check', 30)} لا توجد تصاريح بانتظار توقيعك الآن</div>`}
   </div>` : `
   <div class="card" style="margin-top:14px">
-    <div class="card-head">${icon('clock', 17)} تصاريحك قيد الموافقة<span class="spacer"></span></div>
+    <div class="card-head">${icon('clock', 17)} ${tr('myPending')}<span class="spacer"></span></div>
     ${pending.length ? `<div class="row-list">${pending.map(rowPermit).join('')}</div>`
       : `<div class="empty">${icon('check', 30)} لا توجد تصاريح قيد الموافقة</div>`}
   </div>`}
 
   <div class="card">
-    <div class="card-head">${icon('history', 17)} أحدث التصاريح<span class="spacer"></span><a class="btn btn-ghost btn-sm" href="#/permits">عرض الكل ${icon('back', 13)}</a></div>
+    <div class="card-head">${icon('history', 17)} ${tr('latest')}<span class="spacer"></span><a class="btn btn-ghost btn-sm" href="#/permits">${tr('viewAll')} ${icon('back', 13)}</a></div>
     <div class="row-list">${recent.map(rowPermit).join('')}</div>
   </div>
 
@@ -439,14 +535,14 @@ function viewPermits() {
   return `
   <div class="page-head">
     <div class="grow">
-      <div class="page-title">تصاريح العمل</div>
+      <div class="page-title">${tr('permits')}</div>
       <div class="page-sub">السجل الكامل — بحث فوري بالكود أو الوصف أو المبنى</div>
     </div>
-    <a class="btn btn-amber" href="#/permits/new">${icon('plus', 16)} جديد</a>
+    <a class="btn btn-amber" href="#/permits/new">${icon('plus', 16)} ${tr('newBtn')}</a>
   </div>
 
   <div class="filters">
-    <label class="search">${icon('search', 16)}<input id="pf-q" placeholder="بحث… (كود / وصف / مبنى)" value="${esc(f.q)}"></label>
+    <label class="search">${icon('search', 16)}<input id="pf-q" placeholder="${tr('search')}" value="${esc(f.q)}"></label>
     <select id="pf-status">
       <option value="all" ${f.status === 'all' ? 'selected' : ''}>كل الحالات</option>
       <option value="pending" ${f.status === 'pending' ? 'selected' : ''}>قيد الموافقة</option>
@@ -492,7 +588,7 @@ function newDraft() {
     step: 1, type: 'G', building: 'B02', discipline: 'Civil',
     desc: '', descAr: '', equipment: '', workers: [],
     dateFrom: todayISO(), dateTo: todayISO(), timeFrom: '07:00', timeTo: '16:00',
-    checklist: [],
+    checklist: [], items: null, itemsType: null,
   };
 }
 
@@ -558,13 +654,18 @@ function viewPermitNew() {
       <div class="divider"></div>
       <div class="action-bar">
         <button class="btn btn-ghost" onclick="draft=null;location.hash='#/permits'">إلغاء</button>
-        <button class="btn btn-amber" id="f-next">التالي: التشيك لست ${icon('back', 15)}</button>
+        <button class="btn btn-amber" id="f-next">${tr('next')}: ${tr('checklist')} ${icon('back', 15)}</button>
       </div>
     </div>`;
   }
 
   if (d.step === 2) {
-    if (d.checklist.length !== t.checklist.length) d.checklist = t.checklist.map(() => 0);
+    // بنود قابلة للتحرير: نسخة خاصة بهذا التصريح من قالب النوع
+    if (!d.items || d.itemsType !== d.type) {
+      d.items = t.checklist.map(x => ({ ...x }));
+      d.itemsType = d.type;
+      d.checklist = d.items.map(() => 0);
+    }
     afterRender = bindStep2;
     return `
     <div class="page-head"><div class="grow">
@@ -573,10 +674,16 @@ function viewPermitNew() {
     </div></div>
     ${steps}
     <div class="card card-pad">
-      ${t.checklist.map((item, i) => `
+      ${d.items.map((item, i) => `
         <div class="ck-item">
           <div class="ck-no">${i + 1}</div>
-          <div class="ck-text"><div class="ar">${esc(item.ar)}</div><div class="en">${esc(item.en)}</div></div>
+          <div class="ck-text">
+            <div class="ar">${esc(item.ar)}</div><div class="en">${esc(item.en)}</div>
+            <div style="margin-top:3px">
+              <button class="btn btn-sm btn-ghost js-ck-edit" data-i="${i}" style="padding:1px 8px;font-size:11px">${icon('pen', 11)} تعديل</button>
+              <button class="btn btn-sm btn-ghost js-ck-del" data-i="${i}" style="padding:1px 8px;font-size:11px;color:var(--red)">${icon('x', 11)} حذف</button>
+            </div>
+          </div>
           <div class="seg3" data-i="${i}">
             <button class="yes ${d.checklist[i] === 1 ? 'on' : ''}" data-v="1">YES</button>
             <button class="no ${d.checklist[i] === 2 ? 'on' : ''}" data-v="2">NO</button>
@@ -584,9 +691,14 @@ function viewPermitNew() {
           </div>
         </div>`).join('')}
       <div class="divider"></div>
+      <div style="display:flex;gap:8px">
+        <input type="text" id="ck-new" placeholder="${tr('addItem')}…" style="flex:1;border:1px solid var(--line-2);border-radius:7px;padding:8px 12px">
+        <button class="btn btn-sm" id="ck-add" type="button">${icon('plus', 14)} ${tr('addItem')}</button>
+      </div>
+      <div class="divider"></div>
       <div class="action-bar">
-        <button class="btn" id="f-back">${icon('back', 15)} رجوع</button>
-        <button class="btn btn-amber" id="f-next2">التالي: المراجعة</button>
+        <button class="btn" id="f-back">${icon('back', 15)} ${tr('back')}</button>
+        <button class="btn btn-amber" id="f-next2">${tr('next')}</button>
       </div>
     </div>`;
   }
@@ -623,8 +735,8 @@ function viewPermitNew() {
     </div>
     <div class="divider"></div>
     <div class="action-bar">
-      <button class="btn" id="f-back3">${icon('back', 15)} رجوع</button>
-      <button class="btn btn-green" id="f-submit">${icon('send', 15)} إرسال للموافقات</button>
+      <button class="btn" id="f-back3">${icon('back', 15)} ${tr('back')}</button>
+      <button class="btn btn-green" id="f-submit">${icon('send', 15)} ${tr('send')}</button>
     </div>
   </div>`;
 }
@@ -693,6 +805,28 @@ function bindWorkerDel(onChange) {
 }
 
 function bindStep2() {
+  $$('.js-ck-edit').forEach(b => b.addEventListener('click', () => {
+    const i = +b.dataset.i;
+    const cur = draft.items[i];
+    const v = prompt('عدّل نص البند:', cur.ar || cur.en);
+    if (v === null || !v.trim()) return;
+    cur.ar = v.trim();
+    render();
+  }));
+  $$('.js-ck-del').forEach(b => b.addEventListener('click', () => {
+    const i = +b.dataset.i;
+    if (draft.items.length <= 1) { toast('لا يمكن حذف كل البنود'); return; }
+    draft.items.splice(i, 1);
+    draft.checklist.splice(i, 1);
+    render();
+  }));
+  $('#ck-add').addEventListener('click', () => {
+    const v = $('#ck-new').value.trim();
+    if (!v) return;
+    draft.items.push({ ar: v, en: '' });
+    draft.checklist.push(0);
+    render();
+  });
   $$('.seg3').forEach(seg => {
     seg.addEventListener('click', e => {
       const b = e.target.closest('button'); if (!b) return;
@@ -713,6 +847,8 @@ function bindStep3() {
   $('#f-submit').addEventListener('click', async () => {
     const d = draft;
     const btn = $('#f-submit');
+    // نافذة واتساب تُفتح ضمن إيماءة النقر (قبل أي await) حتى لا يحجبها المتصفح
+    const waWin = window.open('about:blank', '_blank');
     let seq;
     if (CLOUD.enabled()) {
       // الكود يُحجز مركزيًا من الخادم — لا تعارض بين المستخدمين
@@ -723,6 +859,7 @@ function bindStep3() {
       } catch (e) {
         btn.disabled = false; btn.innerHTML = `${icon('send', 15)} إرسال للموافقات`;
         toast('تعذر الاتصال بالخادم — إصدار الكود يتطلب إنترنت');
+        if (waWin && !waWin.closed) waWin.close();
         return;
       }
     } else {
@@ -734,7 +871,7 @@ function bindStep3() {
       desc: d.desc.trim(), descAr: d.descAr.trim(), equipment: d.equipment.trim(),
       workers: d.workers,
       dateFrom: d.dateFrom, dateTo: d.dateTo, timeFrom: d.timeFrom, timeTo: d.timeTo,
-      checklist: d.checklist, stage: 0,
+      checklist: d.checklist, items: d.items, stage: 0,
       approvals: HSE.chain.map(() => null),
       rejection: null, extension: null, closeout: null,
       createdBy: HSE.creator.name, createdAt: new Date().toISOString(),
@@ -745,7 +882,24 @@ function bindStep3() {
     draft = null;
     toast(`تم إنشاء التصريح ${p.code}`);
     location.hash = '#/permit/' + p.id;
+    waNotifyNext(p, waWin); // تنبيه أول معتمد فور الإرسال
   });
+}
+
+/* تنبيه واتساب للمعتمد الذي عليه الدور — يُفتح تلقائيًا بعد التوقيع/الإرسال */
+function waNotifyNext(p, preWin) {
+  if (permitStatus(p) !== 'pending' || !HSE.chain[p.stage]) {
+    if (preWin && !preWin.closed) preWin.close();
+    return;
+  }
+  const c = HSE.chain[p.stage];
+  const emp = empFor(c.key);
+  const phone = emp && emp.phone ? emp.phone.replace(/[^0-9]/g, '') : '';
+  const url = location.origin + location.pathname + '#/permit/' + p.id;
+  const msg = `تصريح عمل بانتظار موافقتك\n${permitCode(p)}\n${p.descAr || p.desc}\nالموقع: ${p.building} · ${fmtDate(p.dateFrom)}\nدورك الآن: ${roleAr(c.key)}\n${url}`;
+  const full = (phone ? `https://wa.me/${phone}?text=` : 'https://wa.me/?text=') + encodeURIComponent(msg);
+  if (preWin && !preWin.closed) preWin.location.href = full;
+  else window.open(full, '_blank');
 }
 
 /* ============================================================
@@ -788,19 +942,19 @@ function viewPermitDetail(id) {
   </div>
 
   <div class="card">
-    <div class="card-head">${icon('check', 17)} التشيك لست</div>
+    <div class="card-head">${icon('check', 17)} ${tr('checklist')}</div>
     <div class="card-pad" style="padding-top:6px">
-      ${t.checklist.map((item, i) => `
+      ${(p.items || t.checklist).map((item, i) => `
         <div class="ck-item">
           <div class="ck-no">${i + 1}</div>
-          <div class="ck-text"><div class="ar">${esc(item.ar)}</div></div>
+          <div class="ck-text"><div class="ar">${esc(item.ar || item.en)}</div></div>
           <span class="ck-ans ${ansCls[p.checklist[i]]}">${ansTxt[p.checklist[i]]}</span>
         </div>`).join('')}
     </div>
   </div>
 
   <div class="card">
-    <div class="card-head">${icon('pen', 17)} سلسلة الموافقات</div>
+    <div class="card-head">${icon('pen', 17)} ${tr('approvals')}</div>
     <div class="card-pad">
       <div class="tl">
         ${HSE.chain.map((c, i) => {
@@ -827,17 +981,17 @@ function viewPermitDetail(id) {
   <div class="card card-pad">
     <div class="action-bar">
       ${myTurn ? `
-        <button class="btn btn-green" id="a-sign">${icon('pen', 15)} توقيع واعتماد</button>
-        <button class="btn btn-red-o" id="a-reject">${icon('x', 15)} رفض مع ملاحظة</button>` : ''}
+        <button class="btn btn-green" id="a-sign">${icon('pen', 15)} ${tr('signApprove')}</button>
+        <button class="btn btn-red-o" id="a-reject">${icon('x', 15)} ${tr('rejectNote')}</button>` : ''}
       ${st === 'pending' && !myTurn ? `
         <button class="btn" id="a-notify">${icon('send', 15)} تنبيه ${roleAr(HSE.chain[p.stage].key)} عبر واتساب</button>` : ''}
-      ${canExtend ? `<button class="btn" id="a-extend">${icon('clock', 15)} تمديد التصريح</button>` : ''}
-      ${canCloseout ? `<button class="btn btn-dark" id="a-close">${icon('check', 15)} إغلاق التصريح</button>` : ''}
+      ${canExtend ? `<button class="btn" id="a-extend">${icon('clock', 15)} ${tr('extend')}</button>` : ''}
+      ${canCloseout ? `<button class="btn btn-dark" id="a-close">${icon('check', 15)} ${tr('closePermit')}</button>` : ''}
       ${st === 'rejected' ? `<button class="btn btn-amber" id="a-reissue">${icon('copy', 15)} إعادة الإصدار بكود جديد</button>` : ''}
-      <button class="btn" id="a-print">${icon('print', 15)} PDF / طباعة</button>
-      ${CLOUD.enabled() && (st === 'approved' || st === 'closed') ? `<button class="btn" id="a-archive">${icon('doc', 15)} أرشفة PDF إلى Drive</button>` : ''}
+      <button class="btn" id="a-print">${icon('print', 15)} ${tr('printPdf')}</button>
+      ${CLOUD.enabled() && (st === 'approved' || st === 'closed') ? `<button class="btn" id="a-archive">${icon('doc', 15)} ${tr('archiveDrive')}</button>` : ''}
       ${p.driveUrl ? `<a class="btn btn-ghost" href="${esc(p.driveUrl)}" target="_blank" rel="noopener">${icon('doc', 15)} النسخة المؤرشفة في Drive</a>` : ''}
-      <button class="btn btn-ghost" id="a-copy">${icon('copy', 15)} نسخ الرابط</button>
+      <button class="btn btn-ghost" id="a-copy">${icon('copy', 15)} ${tr('copyLink')}</button>
     </div>
     ${myTurn ? `<div class="hint" style="margin-top:8px">أنت الآن بدور: <b>${roleAr(role)}</b> — توقيعك سيُسجَّل بالاسم والتاريخ والوقت.</div>` : ''}
   </div>`;
@@ -853,7 +1007,12 @@ function bindPermitDetail(p) {
       p.approvals[p.stage] = { role: DB.currentRole, name: currentUserName(), sig: dataURL, at: new Date().toISOString() };
       p.stage++;
       saveDB(); CLOUD.push('permits', p); render();
-      toast(p.stage >= HSE.chain.length ? 'اكتملت الموافقات — التصريح معتمد ✓' : 'تم التوقيع — انتقل التصريح للمعتمد التالي');
+      if (p.stage >= HSE.chain.length) {
+        toast('اكتملت الموافقات — التصريح معتمد ✓');
+      } else {
+        toast('تم التوقيع — جارٍ فتح واتساب لتنبيه المعتمد التالي');
+        waNotifyNext(p); // توقيع + تنبيه بضغطة واحدة
+      }
     },
   }));
 
@@ -865,15 +1024,7 @@ function bindPermitDetail(p) {
     toast('تم تسجيل الرفض');
   });
 
-  on('#a-notify', () => {
-    const c = HSE.chain[p.stage];
-    const emp = empFor(c.key);
-    const phone = emp && emp.phone ? emp.phone.replace(/[^0-9]/g, '') : '';
-    const url = location.origin + location.pathname + '#/permit/' + p.id;
-    const msg = `تصريح عمل بانتظار موافقتك\n${permitCode(p)}\n${p.descAr || p.desc}\nالموقع: ${p.building} · ${fmtDate(p.dateFrom)}\nدورك الآن: ${roleAr(c.key)}\n${url}`;
-    const base = phone ? `https://wa.me/${phone}?text=` : 'https://wa.me/?text=';
-    window.open(base + encodeURIComponent(msg), '_blank');
-  });
+  on('#a-notify', () => waNotifyNext(p));
 
   on('#a-extend', () => {
     const from = prompt('تمديد من الساعة:', p.timeTo || '16:00'); if (!from) return;
@@ -1069,10 +1220,10 @@ function buildPermitSheetHTML(p) {
     </div>
     <table class="sh-ck">
       <tr><th style="width:26px">No.</th><th>Description</th><th style="width:40px">YES</th><th style="width:40px">NO</th><th style="width:40px">N/A</th></tr>
-      ${t.checklist.map((item, i) => `
+      ${(p.items || t.checklist).map((item, i) => `
       <tr>
         <td class="n">${i + 1}</td>
-        <td>${esc(item.en)}</td>
+        <td>${esc(item.en || item.ar)}</td>
         <td class="c">${ansMark(p.checklist[i], 1)}</td>
         <td class="c">${ansMark(p.checklist[i], 2)}</td>
         <td class="c">${ansMark(p.checklist[i], 3)}</td>
@@ -1179,7 +1330,7 @@ function viewEquipment() {
   return `
   <div class="page-head">
     <div class="grow">
-      <div class="page-title">فحص المعدات</div>
+      <div class="page-title">${tr('equipment')}</div>
       <div class="page-sub">كود لون هذا الشهر: <span class="month-dot" style="background:${mc.hex}"></span> ${mc.ar} — لكل معدة نموذج فحص خاص بها (${Object.keys(HSE.equipmentTypes).length} نوعًا)</div>
     </div>
     <a class="btn btn-amber" href="#/equipment/new">${icon('plus', 16)} معدة جديدة</a>
@@ -1516,7 +1667,7 @@ function viewRisk() {
   return `
   <div class="page-head">
     <div class="grow">
-      <div class="page-title">تقييم المخاطر</div>
+      <div class="page-title">${tr('risk')}</div>
       <div class="page-sub">اكتب النشاط — والنظام يقترح المخاطر والاحتياطات من المكتبة</div>
     </div>
     <a class="btn btn-amber" href="#/risk/new">${icon('plus', 16)} تقييم جديد</a>
@@ -1764,9 +1915,9 @@ function printRA(ra) {
    إدارة الموظفين
    ============================================================ */
 function viewTeam() {
-  const groups = HSE.teamRoles.map(r => ({
+  const groups = allTeamRoles().map(r => ({
     role: r,
-    emps: DB.employees.filter(e => e.role === r.key),
+    emps: DB.employees.filter(e => e.role === r.key && e.id !== '_roles'),
   })).filter(g => g.emps.length);
 
   const admin = isAdmin();
@@ -1779,12 +1930,37 @@ function viewTeam() {
       buildRoleSwitcher(); render();
       toast(e.active ? `تم تفعيل ${e.name}` : `تم إيقاف ${e.name}`);
     }));
+    // إدارة الأدوار المخصصة
+    $('#nr-add')?.addEventListener('click', () => {
+      const name = $('#nr-name').value.trim();
+      if (!name) { toast('اكتب اسم الدور'); return; }
+      let cfg = rolesConfig();
+      if (!cfg) {
+        cfg = { id: '_roles', role: '_config', name: 'ROLES CONFIG', company: '', phone: '', email: '', active: false, list: [] };
+        DB.employees.push(cfg);
+      }
+      cfg.list = cfg.list || [];
+      cfg.list.push({
+        key: 'r' + Date.now().toString(36), ar: name,
+        canCreate: $('#nr-create').checked, canInspect: $('#nr-inspect').checked,
+      });
+      saveDB(); CLOUD.push('employees', cfg);
+      toast('أُضيف الدور: ' + name); render();
+    });
+    $$('.js-role-del').forEach(b => b.addEventListener('click', () => {
+      const k = b.dataset.k;
+      if (DB.employees.some(e => e.role === k)) { toast('الدور مُسند لموظفين — انقلهم لدور آخر أولًا'); return; }
+      const cfg = rolesConfig();
+      cfg.list = (cfg.list || []).filter(r => r.key !== k);
+      saveDB(); CLOUD.push('employees', cfg); render();
+      toast('حُذف الدور');
+    }));
   };
 
   return `
   <div class="page-head">
     <div class="grow">
-      <div class="page-title">إدارة الموظفين</div>
+      <div class="page-title">${tr('team')}</div>
       <div class="page-sub">${DB.employees.filter(e => e.active).length} نشط من أصل ${DB.employees.length} — ${admin ? 'الإضافة والتعديل والإيقاف بيدك (أدمن)' : 'عرض فقط — الإدارة لمسؤول النظام'}</div>
     </div>
     ${admin ? `<a class="btn btn-amber" href="#/team/new">${icon('plus', 16)} موظف جديد</a>` : ''}
@@ -1809,6 +1985,29 @@ function viewTeam() {
       </div>`).join('')}
     </div>
   </div>`).join('')}
+
+  ${admin ? `
+  <div class="card">
+    <div class="card-head">${icon('shield', 17)} الأدوار المخصصة <span class="chip">${customRoles().length}</span></div>
+    <div class="card-pad">
+      ${customRoles().map(r => `
+      <div style="display:flex;gap:8px;align-items:center;padding:7px 0;border-bottom:1px dashed var(--line)">
+        <b style="flex:1;font-size:13.5px">${esc(r.ar)}</b>
+        <span class="chip">${r.canCreate ? 'إنشاء + عرض' : 'موافقة وعرض'}</span>
+        ${r.canInspect ? '<span class="chip">فحص معدات</span>' : ''}
+        <button class="btn btn-sm js-role-del" data-k="${esc(r.key)}">حذف</button>
+      </div>`).join('') || '<div class="hint">لا توجد أدوار مخصصة بعد — أضف دورًا حسب حاجة موقعك (مشرف بيئة، مهندس جودة…)</div>'}
+      <div class="divider"></div>
+      <div class="field"><label>اسم الدور الجديد</label>
+        <input type="text" id="nr-name" placeholder="مثال: مشرف بيئة"></div>
+      <div style="display:flex;gap:18px;flex-wrap:wrap;margin:10px 0">
+        <label style="font-size:13px;font-weight:600;display:inline-flex;gap:6px;align-items:center"><input type="checkbox" id="nr-create"> يقدر ينشئ (تصاريح/تقييمات/معدات)</label>
+        <label style="font-size:13px;font-weight:600;display:inline-flex;gap:6px;align-items:center"><input type="checkbox" id="nr-inspect"> يقدر يفحص المعدات</label>
+      </div>
+      <button class="btn btn-amber" id="nr-add">${icon('plus', 15)} إضافة الدور</button>
+      <div class="hint" style="margin-top:10px">سلسلة الاعتماد الرباعية ثابتة كما في النموذج الرسمي — الدور الجديد يدخل ويعمل بصلاحياته، ثم أسنده لأي موظف من نموذجه.</div>
+    </div>
+  </div>` : ''}
 
   <div class="card card-pad">
     <div class="hint">المعتمد المعروض في سلسلة الموافقات هو الموظف <b>النشط</b> الأول بذلك الدور — التصاريح الموقعة سابقًا تحتفظ بأسماء موقّعيها كما هي.
@@ -1857,7 +2056,7 @@ function viewTeamForm(id) {
       <div class="field full"><label>الاسم <small>(كما سيظهر في النماذج والتواقيع)</small></label>
         <input type="text" id="emp-name" value="${esc(e.name)}" dir="ltr" placeholder="Mohammed Ali"></div>
       <div class="field"><label>الدور</label>
-        <select id="emp-role">${HSE.teamRoles.map(r => `<option value="${r.key}" ${r.key === e.role ? 'selected' : ''}>${r.ar}</option>`).join('')}</select></div>
+        <select id="emp-role">${allTeamRoles().map(r => `<option value="${r.key}" ${r.key === e.role ? 'selected' : ''}>${r.ar}${r.custom ? ' (مخصص)' : ''}</option>`).join('')}</select></div>
       <div class="field"><label>الجهة</label>
         <select id="emp-company">${HSE.companies.map(c => `<option ${c === e.company ? 'selected' : ''}>${c}</option>`).join('')}</select></div>
       <div class="field full"><label>الجوال <small>(بصيغة دولية لتنبيهات واتساب — اختياري)</small></label>
@@ -1889,7 +2088,7 @@ function viewFiles(folderId) {
   if (!CLOUD.enabled()) {
     return `
     <div class="page-head"><div class="grow">
-      <div class="page-title">ملفات المشروع — Google Drive</div>
+      <div class="page-title">${tr('files')} — Google Drive</div>
     </div></div>
     <div class="card card-pad">
       <div class="empty">${icon('doc', 32)}
@@ -1958,7 +2157,7 @@ function viewFiles(folderId) {
    الدخول والملف الشخصي
    ============================================================ */
 function viewLogin() {
-  const loginables = DB.employees.filter(e => e.active && e.role !== 'worker');
+  const loginables = DB.employees.filter(e => e.active && e.role !== 'worker' && e.role !== '_config');
   afterRender = () => {
     $('#lg-btn').addEventListener('click', doLogin);
     $('#lg-pin').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
@@ -1980,14 +2179,14 @@ function viewLogin() {
   <div style="max-width:420px;margin:8vh auto 0">
     <div class="card card-pad" style="text-align:center">
       <div class="brand-mark" style="margin:0 auto 10px;width:48px;height:48px;font-size:20px">H+</div>
-      <div style="font-weight:700;font-size:18px">تسجيل الدخول</div>
+      <div style="font-weight:700;font-size:18px">${tr('login')}</div>
       <div class="hint" style="margin-bottom:16px">${esc(HSE.project.siteAr)}</div>
-      <div class="field" style="text-align:start;margin-bottom:10px"><label>الاسم</label>
+      <div class="field" style="text-align:start;margin-bottom:10px"><label>${tr('name')}</label>
         <select id="lg-emp">${loginables.map(e => `<option value="${e.id}">${esc(e.name)} — ${roleAr(e.role)}</option>`).join('')}</select></div>
-      <div class="field" style="text-align:start"><label>الرمز الشخصي (PIN)</label>
+      <div class="field" style="text-align:start"><label>${tr('pin')}</label>
         <input type="password" id="lg-pin" inputmode="numeric" dir="ltr" placeholder="••••"></div>
       <div class="divider"></div>
-      <button class="btn btn-amber btn-block" id="lg-btn">دخول</button>
+      <button class="btn btn-amber btn-block" id="lg-btn">${tr('enter')}</button>
       <div class="hint" style="margin-top:10px">تغيّر رمزك من ملفك الشخصي بعد الدخول — والعمال لا يحتاجون حسابًا</div>
     </div>
   </div>`;
@@ -2021,10 +2220,10 @@ function viewProfile() {
   };
   return `
   <div class="page-head"><div class="grow">
-    <div class="page-title">الملف الشخصي</div>
+    <div class="page-title">${tr('profile')}</div>
     <div class="page-sub">جلستك على هذا الجهاز</div>
   </div>
-  <button class="btn btn-red-o" id="pf-logout">${icon('x', 15)} تسجيل الخروج</button></div>
+  <button class="btn btn-red-o" id="pf-logout">${icon('x', 15)} ${tr('logout')}</button></div>
 
   <div class="card card-pad">
     <div class="kv">
@@ -2083,12 +2282,14 @@ function buildRoleSwitcher() {
   }
   const roleSel = $('#role-select');
   if (!roleSel) return;
-  roleSel.innerHTML = HSE.teamRoles.filter(r => r.duty).map(r =>
+  roleSel.innerHTML = allTeamRoles().filter(r => r.duty).map(r =>
     `<option value="${r.key}" ${r.key === DB.currentRole ? 'selected' : ''}>${r.ar} — ${roleName(r.key)}</option>`).join('');
 }
 
 function boot() {
   loadDB();
+  applyLangChrome();
+  $('#lang-btn')?.addEventListener('click', toggleLang);
 
   // في الوضع السحابي: الدور من هوية المستخدم المسجل
   const se = sessionEmployee();

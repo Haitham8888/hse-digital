@@ -685,8 +685,8 @@ function hseSeed() {
   ];
 
   return {
-    v: 3,
-    counters: { G: 845, H: 216, RA: 54, INS: 20, EMP: 13 },
+    v: 7,
+    counters: { G: 845, H: 216, RA: 54, INS: 20, EMP: 34 },
     currentRole: 'creator',
     savedSignatures: {},
     settings: {},
