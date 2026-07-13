@@ -282,8 +282,29 @@ function customRoles() {
   const c = rolesConfig();
   return (c && c.list) || [];
 }
+function roleOverrides() {
+  const c = rolesConfig();
+  return (c && c.overrides) || {};
+}
+function hiddenRoles() {
+  const c = rolesConfig();
+  return (c && c.hidden) || [];
+}
+function ensureRolesConfig() {
+  let cfg = rolesConfig();
+  if (!cfg) {
+    cfg = { id: '_roles', role: '_config', name: 'ROLES CONFIG', company: '', phone: '', email: '', active: false, list: [], overrides: {}, hidden: [] };
+    DB.employees.push(cfg);
+  }
+  cfg.list = cfg.list || []; cfg.overrides = cfg.overrides || {}; cfg.hidden = cfg.hidden || [];
+  return cfg;
+}
 function allTeamRoles() {
-  return HSE.teamRoles.concat(customRoles().map(r => ({ key: r.key, ar: r.ar, duty: true, custom: true })));
+  const ov = roleOverrides(), hid = hiddenRoles();
+  return HSE.teamRoles
+    .filter(r => !hid.includes(r.key))
+    .map(r => ({ ...r, ar: (ov[r.key] && ov[r.key].ar) || r.ar }))
+    .concat(customRoles().map(r => ({ key: r.key, ar: r.ar, duty: true, custom: true })));
 }
 function roleFlags(key) {
   return customRoles().find(r => r.key === key) || null;
@@ -1263,7 +1284,7 @@ function buildPermitSheetHTML(p) {
       &nbsp;Permit closed, signature of Consultant Manager: ${p.closeout ? `${esc(p.closeout.by)}` : '________________'}
     </div>
     <div class="sh-foot">
-      <span>HSE Digital System — generated ${fmtDT(new Date().toISOString())}</span>
+      <span>FERAS — HSE Digital System · generated ${fmtDT(new Date().toISOString())}</span>
       <span>${permitCode(p)}</span>
     </div>
   </div>`;
@@ -1615,7 +1636,7 @@ function buildInspectionSheetHTML(e, insp) {
         <div class="dt">Sign / Date: ______________</div>
       </div>
     </div>
-    <div class="sh-foot"><span>HSE Digital System — ${esc(R.en)}</span><span>${esc(e.code)} · ${fmtDate(insp.date)}</span></div>
+    <div class="sh-foot"><span>FERAS — HSE Digital System · ${esc(R.en)}</span><span>${esc(e.code)} · ${fmtDate(insp.date)}</span></div>
   </div>`;
 }
 
@@ -1934,12 +1955,7 @@ function viewTeam() {
     $('#nr-add')?.addEventListener('click', () => {
       const name = $('#nr-name').value.trim();
       if (!name) { toast('اكتب اسم الدور'); return; }
-      let cfg = rolesConfig();
-      if (!cfg) {
-        cfg = { id: '_roles', role: '_config', name: 'ROLES CONFIG', company: '', phone: '', email: '', active: false, list: [] };
-        DB.employees.push(cfg);
-      }
-      cfg.list = cfg.list || [];
+      const cfg = ensureRolesConfig();
       cfg.list.push({
         key: 'r' + Date.now().toString(36), ar: name,
         canCreate: $('#nr-create').checked, canInspect: $('#nr-inspect').checked,
@@ -1947,11 +1963,28 @@ function viewTeam() {
       saveDB(); CLOUD.push('employees', cfg);
       toast('أُضيف الدور: ' + name); render();
     });
+    $$('.js-role-ren').forEach(b => b.addEventListener('click', () => {
+      const k = b.dataset.k;
+      const cur = allTeamRoles().find(r => r.key === k);
+      const v = prompt('الاسم الجديد للدور:', cur ? cur.ar : '');
+      if (v === null || !v.trim()) return;
+      const cfg = ensureRolesConfig();
+      const custom = (cfg.list || []).find(r => r.key === k);
+      if (custom) custom.ar = v.trim();
+      else cfg.overrides[k] = { ar: v.trim() };
+      saveDB(); CLOUD.push('employees', cfg);
+      buildRoleSwitcher(); render();
+      toast('تم تعديل اسم الدور');
+    }));
     $$('.js-role-del').forEach(b => b.addEventListener('click', () => {
       const k = b.dataset.k;
-      if (DB.employees.some(e => e.role === k)) { toast('الدور مُسند لموظفين — انقلهم لدور آخر أولًا'); return; }
-      const cfg = rolesConfig();
-      cfg.list = (cfg.list || []).filter(r => r.key !== k);
+      if (DB.employees.some(e => e.role === k && e.id !== '_roles')) { toast('الدور مُسند لموظفين — انقلهم لدور آخر أولًا'); return; }
+      const cfg = ensureRolesConfig();
+      if ((cfg.list || []).some(r => r.key === k)) {
+        cfg.list = cfg.list.filter(r => r.key !== k);
+      } else {
+        if (!cfg.hidden.includes(k)) cfg.hidden.push(k);
+      }
       saveDB(); CLOUD.push('employees', cfg); render();
       toast('حُذف الدور');
     }));
@@ -1990,13 +2023,17 @@ function viewTeam() {
   <div class="card">
     <div class="card-head">${icon('shield', 17)} الأدوار المخصصة <span class="chip">${customRoles().length}</span></div>
     <div class="card-pad">
-      ${customRoles().map(r => `
+      ${allTeamRoles().map(r => {
+        const chainRole = HSE.chain.some(c => c.key === r.key);
+        const deletable = r.custom || ['creator', 'inspector'].includes(r.key);
+        return `
       <div style="display:flex;gap:8px;align-items:center;padding:7px 0;border-bottom:1px dashed var(--line)">
         <b style="flex:1;font-size:13.5px">${esc(r.ar)}</b>
-        <span class="chip">${r.canCreate ? 'إنشاء + عرض' : 'موافقة وعرض'}</span>
-        ${r.canInspect ? '<span class="chip">فحص معدات</span>' : ''}
-        <button class="btn btn-sm js-role-del" data-k="${esc(r.key)}">حذف</button>
-      </div>`).join('') || '<div class="hint">لا توجد أدوار مخصصة بعد — أضف دورًا حسب حاجة موقعك (مشرف بيئة، مهندس جودة…)</div>'}
+        <span class="chip">${r.custom ? 'مخصص' : chainRole ? 'سلسلة الاعتماد' : 'أساسي'}</span>
+        <button class="btn btn-sm js-role-ren" data-k="${esc(r.key)}">تعديل الاسم</button>
+        ${deletable ? `<button class="btn btn-sm js-role-del" data-k="${esc(r.key)}" style="color:var(--red)">حذف</button>` : ''}
+      </div>`;
+      }).join('')}
       <div class="divider"></div>
       <div class="field"><label>اسم الدور الجديد</label>
         <input type="text" id="nr-name" placeholder="مثال: مشرف بيئة"></div>
@@ -2178,7 +2215,7 @@ function viewLogin() {
   return `
   <div style="max-width:420px;margin:8vh auto 0">
     <div class="card card-pad" style="text-align:center">
-      <div class="brand-mark" style="margin:0 auto 10px;width:48px;height:48px;font-size:20px">H+</div>
+      <div class="brand-mark" style="margin:0 auto 10px;width:48px;height:48px;font-size:22px;font-family:var(--font)">ف</div>
       <div style="font-weight:700;font-size:18px">${tr('login')}</div>
       <div class="hint" style="margin-bottom:16px">${esc(HSE.project.siteAr)}</div>
       <div class="field" style="text-align:start;margin-bottom:10px"><label>${tr('name')}</label>
