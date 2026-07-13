@@ -60,6 +60,35 @@ function migrateDB() {
   saveDB();
 }
 
+/* ---------------- الجلسة: دخول / خروج ---------------- */
+const SESSION_KEY = 'hse_session_v1';
+// رموز افتراضية حسب الدور — تُستخدم فقط إذا لم يُحدد للموظف رمز شخصي بعد
+const DEFAULT_PINS = {
+  creator: '0000', siteManager: '1111', hseSupervisor: '2222',
+  consultantEngineer: '3333', hseConsultant: '4444', inspector: '5555',
+};
+function getSession() {
+  try { return JSON.parse(localStorage.getItem(SESSION_KEY) || 'null'); }
+  catch (e) { return null; }
+}
+function setSession(emp) {
+  try { localStorage.setItem(SESSION_KEY, JSON.stringify({ empId: emp.id, at: new Date().toISOString() })); }
+  catch (e) { /* */ }
+}
+function clearSession() {
+  try { localStorage.removeItem(SESSION_KEY); } catch (e) { /* */ }
+}
+function sessionEmployee() {
+  const s = getSession();
+  if (!s) return null;
+  return DB.employees.find(e => e.id === s.empId && e.active) || null;
+}
+function loginPinFor(emp) {
+  return (emp.pin && String(emp.pin).trim()) || DEFAULT_PINS[emp.role] || '0000';
+}
+// الدخول مطلوب في الوضع السحابي فقط — الوضع المحلي يبقى تجريبيًا مفتوحًا
+function loginRequired() { return CLOUD.enabled() && !sessionEmployee(); }
+
 const INSP_RESULTS = {
   fit: { en: 'FIT', ar: 'صالحة للعمل', cls: 'pass' },
   partial: { en: 'PARTIALLY FIT', ar: 'صالحة جزئيًا', cls: 'due' },
@@ -202,10 +231,23 @@ const routes = [
   { re: /^#\/team$/, view: viewTeam, nav: 'team' },
   { re: /^#\/files$/, view: viewFiles, nav: 'files' },
   { re: /^#\/files\/([^/]+)$/, view: viewFiles, nav: 'files' },
+  { re: /^#\/profile$/, view: viewProfile, nav: 'profile' },
 ];
+
+let pendingHash = null; // الوجهة المطلوبة قبل الدخول (مثل مسح QR)
 
 function render() {
   const hash = location.hash || '#/';
+  // بوابة الدخول: كل الشاشات محمية في الوضع السحابي
+  if (loginRequired()) {
+    if (hash !== '#/' && hash !== '#/login') pendingHash = hash;
+    $$('.js-nav').forEach(a => a.classList.remove('active'));
+    const main0 = $('#main');
+    main0.innerHTML = viewLogin();
+    window.scrollTo(0, 0);
+    if (afterRender) { const f = afterRender; afterRender = null; f(); }
+    return;
+  }
   let matched = routes[0], args = [];
   for (const r of routes) {
     const m = hash.match(r.re);
@@ -760,9 +802,9 @@ function bindPermitDetail(p) {
 
   on('#a-sign', () => openSignature({
     title: `توقيع ${roleAr(DB.currentRole)}`,
-    name: roleName(DB.currentRole),
+    name: currentUserName(),
     onDone: (dataURL) => {
-      p.approvals[p.stage] = { role: DB.currentRole, name: roleName(DB.currentRole), sig: dataURL, at: new Date().toISOString() };
+      p.approvals[p.stage] = { role: DB.currentRole, name: currentUserName(), sig: dataURL, at: new Date().toISOString() };
       p.stage++;
       saveDB(); CLOUD.push('permits', p); render();
       toast(p.stage >= HSE.chain.length ? 'اكتملت الموافقات — التصريح معتمد ✓' : 'تم التوقيع — انتقل التصريح للمعتمد التالي');
@@ -772,7 +814,7 @@ function bindPermitDetail(p) {
   on('#a-reject', () => {
     const note = prompt('سبب الرفض (سيظهر للمنشئ وفي السجل):');
     if (!note || !note.trim()) return;
-    p.rejection = { by: roleName(DB.currentRole), role: DB.currentRole, note: note.trim(), at: new Date().toISOString() };
+    p.rejection = { by: currentUserName(), role: DB.currentRole, note: note.trim(), at: new Date().toISOString() };
     saveDB(); CLOUD.push('permits', p); render();
     toast('تم تسجيل الرفض');
   });
@@ -791,9 +833,9 @@ function bindPermitDetail(p) {
     const from = prompt('تمديد من الساعة:', p.timeTo || '16:00'); if (!from) return;
     const to = prompt('إلى الساعة:', '19:00'); if (!to) return;
     openSignature({
-      title: 'توقيع التمديد', name: roleName(DB.currentRole),
+      title: 'توقيع التمديد', name: currentUserName(),
       onDone: (sig) => {
-        p.extension = { from, to, by: roleName(DB.currentRole), sig, at: new Date().toISOString() };
+        p.extension = { from, to, by: currentUserName(), sig, at: new Date().toISOString() };
         saveDB(); CLOUD.push('permits', p); render(); toast('تم تمديد التصريح');
       },
     });
@@ -801,14 +843,14 @@ function bindPermitDetail(p) {
 
   on('#a-close', () => {
     openSignature({
-      title: 'إغلاق التصريح — توقيع الاستشاري', name: roleName(DB.currentRole),
+      title: 'إغلاق التصريح — توقيع الاستشاري', name: currentUserName(),
       onDone: (sig) => {
         const now = new Date();
         p.closeout = {
           date: todayISO(),
           time: `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`,
           note: 'All work completed and area has been cleared.',
-          by: roleName(DB.currentRole), sig, at: now.toISOString(),
+          by: currentUserName(), sig, at: now.toISOString(),
         };
         saveDB(); CLOUD.push('permits', p); render();
         toast('تم إغلاق التصريح');
@@ -1204,12 +1246,12 @@ function viewInspect(id) {
       if (inspDraft.items.some(v => v === 0)) { toast('أجب على جميع البنود بـ Yes أو No'); return; }
       if (!inspDraft.result) { toast('حدد نتيجة الفحص (FIT / PARTIALLY FIT / UNFIT)'); return; }
       openSignature({
-        title: 'توقيع الفاحص — Inspected By', name: roleName(DB.currentRole),
+        title: 'توقيع الفاحص — Inspected By', name: currentUserName(),
         onDone: (sig) => {
           const result = inspDraft.result;
           e.inspections.unshift({
             id: 'i' + (DB.counters.INS++), clNo,
-            date: todayISO(), by: roleName(DB.currentRole),
+            date: todayISO(), by: currentUserName(),
             result, notes: inspDraft.notes.trim(), items: [...inspDraft.items], sig,
           });
           saveDB(); CLOUD.push('equipment', e); inspDraft = null;
@@ -1232,7 +1274,7 @@ function viewInspect(id) {
     <div class="grow">
       <div class="row-code" style="font-size:13px">${clNo} · ${e.code}</div>
       <div class="page-title" style="font-size:18px">Equipment Inspection Checklist — ${esc(ty.ar)}</div>
-      <div class="page-sub">${esc(e.model)} · لوحة: ${esc(e.plate)} · ${roleAr('inspector')}: ${esc(roleName(DB.currentRole))} · ${fmtDate(new Date().toISOString())}</div>
+      <div class="page-sub">${esc(e.model)} · لوحة: ${esc(e.plate)} · ${roleAr('inspector')}: ${esc(currentUserName())} · ${fmtDate(new Date().toISOString())}</div>
     </div>
   </div>
   <div class="card card-pad">
@@ -1477,7 +1519,7 @@ function viewRiskNew() {
         refNo: 'RBC-HSE-' + String(raSeq).padStart(3, '0'),
         activity: raDraft.activity.trim(), location: raDraft.location,
         assessor: (raDraft.assessor || 'HSE Department').trim(),
-        date: todayISO(), by: roleName(DB.currentRole) || HSE.creator.name,
+        date: todayISO(), by: currentUserName() || HSE.creator.name,
         rows, sections: { ...RA_SECTIONS_DEFAULT },
       };
       DB.assessments.push(ra); saveDB(); CLOUD.push('assessments', ra); raDraft = null;
@@ -1738,6 +1780,7 @@ function viewTeamForm(id) {
         company: $('#emp-company').value,
         phone: $('#emp-phone').value.trim(),
         email: $('#emp-email').value.trim(),
+        pin: $('#emp-pin').value.trim(),
         active: $('#emp-active').checked,
       };
       let saved;
@@ -1769,6 +1812,8 @@ function viewTeamForm(id) {
         <input type="text" id="emp-phone" value="${esc(e.phone)}" dir="ltr" placeholder="9665XXXXXXXX"></div>
       <div class="field full"><label>البريد الإلكتروني <small>(يصله إشعار تلقائي عندما يكون الدور عليه — اختياري)</small></label>
         <input type="text" id="emp-email" value="${esc(e.email || '')}" dir="ltr" placeholder="name@company.com"></div>
+      <div class="field full"><label>رمز الدخول الشخصي (PIN) <small>(لتسجيل دخوله للنظام — العمال لا يحتاجونه)</small></label>
+        <input type="text" id="emp-pin" value="${esc(e.pin || '')}" dir="ltr" inputmode="numeric" placeholder="اتركه فارغًا للرمز الافتراضي للدور"></div>
       <div class="field full">
         <label style="display:inline-flex;align-items:center;gap:8px;cursor:pointer">
           <input type="checkbox" id="emp-active" ${e.active ? 'checked' : ''}> نشط — يظهر في القوائم وسلاسل الاعتماد
@@ -1858,9 +1903,132 @@ function viewFiles(folderId) {
 }
 
 /* ============================================================
+   الدخول والملف الشخصي
+   ============================================================ */
+function viewLogin() {
+  const loginables = DB.employees.filter(e => e.active && e.role !== 'worker');
+  afterRender = () => {
+    $('#lg-btn').addEventListener('click', doLogin);
+    $('#lg-pin').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+  };
+  const doLogin = () => {
+    const emp = DB.employees.find(e => e.id === $('#lg-emp').value);
+    const pin = $('#lg-pin').value.trim();
+    if (!emp) { toast('اختر اسمك من القائمة'); return; }
+    if (pin !== loginPinFor(emp)) { toast('الرمز غير صحيح'); return; }
+    setSession(emp);
+    DB.currentRole = emp.role; saveDB();
+    buildRoleSwitcher();
+    toast(`أهلًا ${emp.name} — ${roleAr(emp.role)}`);
+    location.hash = pendingHash || '#/';
+    pendingHash = null;
+    render();
+  };
+  return `
+  <div style="max-width:420px;margin:8vh auto 0">
+    <div class="card card-pad" style="text-align:center">
+      <div class="brand-mark" style="margin:0 auto 10px;width:48px;height:48px;font-size:20px">H+</div>
+      <div style="font-weight:700;font-size:18px">تسجيل الدخول</div>
+      <div class="hint" style="margin-bottom:16px">${esc(HSE.project.siteAr)}</div>
+      <div class="field" style="text-align:start;margin-bottom:10px"><label>الاسم</label>
+        <select id="lg-emp">${loginables.map(e => `<option value="${e.id}">${esc(e.name)} — ${roleAr(e.role)}</option>`).join('')}</select></div>
+      <div class="field" style="text-align:start"><label>الرمز الشخصي (PIN)</label>
+        <input type="password" id="lg-pin" inputmode="numeric" dir="ltr" placeholder="••••"></div>
+      <div class="divider"></div>
+      <button class="btn btn-amber btn-block" id="lg-btn">دخول</button>
+      <div class="hint" style="margin-top:10px">تغيّر رمزك من ملفك الشخصي بعد الدخول — والعمال لا يحتاجون حسابًا</div>
+    </div>
+  </div>`;
+}
+
+function viewProfile() {
+  const emp = sessionEmployee();
+  if (!emp) {
+    // الوضع المحلي التجريبي: الملف يعرض الدور الحالي فقط
+    return `<div class="card card-pad"><div class="empty">الملف الشخصي يعمل بعد تسجيل الدخول (الوضع السحابي)</div></div>`;
+  }
+  const pending = DB.permits.filter(p => permitStatus(p) === 'pending' && HSE.chain[p.stage] && HSE.chain[p.stage].key === emp.role);
+  const savedSig = DB.savedSignatures[emp.role];
+  afterRender = () => {
+    $('#pf-savepin').addEventListener('click', () => {
+      const np = $('#pf-newpin').value.trim();
+      if (np.length < 4) { toast('الرمز 4 أرقام على الأقل'); return; }
+      emp.pin = np; saveDB(); CLOUD.push('employees', emp);
+      $('#pf-newpin').value = '';
+      toast('تم تغيير رمزك الشخصي');
+    });
+    $('#pf-clearsig')?.addEventListener('click', () => {
+      delete DB.savedSignatures[emp.role]; saveDB(); render();
+      toast('حُذف التوقيع المحفوظ');
+    });
+    $('#pf-logout').addEventListener('click', () => {
+      clearSession();
+      toast('تم تسجيل الخروج');
+      location.hash = '#/'; render();
+    });
+  };
+  return `
+  <div class="page-head"><div class="grow">
+    <div class="page-title">الملف الشخصي</div>
+    <div class="page-sub">جلستك على هذا الجهاز</div>
+  </div>
+  <button class="btn btn-red-o" id="pf-logout">${icon('x', 15)} تسجيل الخروج</button></div>
+
+  <div class="card card-pad">
+    <div class="kv">
+      <div><div class="k">الاسم</div><div class="v" dir="ltr" style="text-align:start">${esc(emp.name)}</div></div>
+      <div><div class="k">الدور</div><div class="v">${roleAr(emp.role)}</div></div>
+      <div><div class="k">الجهة</div><div class="v">${esc(emp.company)}</div></div>
+      <div><div class="k">الجوال</div><div class="v mono">${esc(emp.phone || '—')}</div></div>
+      <div><div class="k">البريد</div><div class="v mono" style="font-size:11px">${esc(emp.email || '—')}</div></div>
+    </div>
+    <div class="hint" style="margin-top:8px">تعديل بياناتك من <a href="#/team/${emp.id}" style="color:var(--blue)">إدارة الموظفين</a></div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">${icon('shield', 17)} الرمز الشخصي (PIN)</div>
+    <div class="card-pad">
+      <div style="display:flex;gap:8px">
+        <input type="password" id="pf-newpin" inputmode="numeric" dir="ltr" placeholder="رمز جديد" style="flex:1;border:1px solid var(--line-2);border-radius:7px;padding:9px 12px">
+        <button class="btn" id="pf-savepin">حفظ</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">${icon('pen', 17)} توقيعي المحفوظ<span class="spacer"></span>
+      ${savedSig ? `<button class="btn btn-sm btn-red-o" id="pf-clearsig">حذف</button>` : ''}</div>
+    <div class="card-pad" style="text-align:center">
+      ${savedSig ? `<img src="${savedSig}" style="height:60px;background:#fff;border:1px solid var(--line);border-radius:6px;padding:4px 14px">`
+        : `<div class="hint">لا يوجد — عند أول توقيع فعّل «حفظ توقيعي» وسيظهر هنا</div>`}
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">${icon('clock', 17)} بانتظار توقيعك (${pending.length})</div>
+    ${pending.length ? `<div class="row-list">${pending.map(rowPermit).join('')}</div>` : `<div class="empty">لا شيء بانتظارك الآن ✓</div>`}
+  </div>`;
+}
+
+/* ============================================================
    الإقلاع
    ============================================================ */
+function currentUserName() {
+  const e = sessionEmployee();
+  return e ? e.name : roleName(DB.currentRole);
+}
+
 function buildRoleSwitcher() {
+  const wrap = $('.role-switch');
+  if (!wrap) return;
+  if (CLOUD.enabled()) {
+    // الوضع السحابي: هوية المستخدم المسجل بدل مبدّل الأدوار
+    const emp = sessionEmployee();
+    wrap.innerHTML = `<a href="#/profile" style="display:flex;align-items:center;gap:8px;color:#fff;min-width:0">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" style="flex:0 0 auto;opacity:.7"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6 8-6s8 2 8 6"/></svg>
+      <span style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${emp ? esc(emp.name) : 'تسجيل الدخول'}</span></a>`;
+    return;
+  }
   const roleSel = $('#role-select');
   if (!roleSel) return;
   roleSel.innerHTML = HSE.teamRoles.filter(r => r.duty).map(r =>
@@ -1870,10 +2038,14 @@ function buildRoleSwitcher() {
 function boot() {
   loadDB();
 
-  // مبدّل الدور — يُبنى من سجل الموظفين النشطين
+  // في الوضع السحابي: الدور من هوية المستخدم المسجل
+  const se = sessionEmployee();
+  if (CLOUD.enabled() && se) { DB.currentRole = se.role; }
+
+  // مبدّل الدور — يُبنى من سجل الموظفين النشطين (الوضع المحلي فقط)
   const roleSel = $('#role-select');
   buildRoleSwitcher();
-  roleSel.addEventListener('change', () => {
+  if (roleSel && !CLOUD.enabled()) roleSel.addEventListener('change', () => {
     const target = roleSel.value;
     // حماية الأدوار برمز PIN عند تفعيل الخلفية
     if (!CLOUD.roleUnlocked(target) && !CLOUD.unlockRole(target)) {
