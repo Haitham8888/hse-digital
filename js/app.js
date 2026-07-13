@@ -48,6 +48,11 @@ function migrateDB() {
     DB.employees.unshift(adm);
     DB._pushAdmin = adm.id;
   }
+  if (DB.v < 6) {
+    // اعتماد الطاقم الحقيقي المستخرج من وثائق المشروع
+    DB._pushRoster = applyRealRoster(DB);
+    if ((DB.counters.EMP || 0) < 34) DB.counters.EMP = 34;
+  }
   if (DB.v < 5) {
     // أعمدة تقييم المخاطر بالنموذج المعتمد (P/S + المتبقي)
     DB.assessments.forEach(ra => {
@@ -63,6 +68,7 @@ function migrateDB() {
     });
     DB.v = 5;
   }
+  if (DB.v < 6) DB.v = 6;
   saveDB();
 }
 
@@ -2102,6 +2108,14 @@ function boot() {
       }
       delete DB._pushAdmin;
       CLOUD.push('employees', adm);
+    }
+    // رفع تحديث الطاقم الحقيقي للقاعدة المشتركة (مرة واحدة)
+    if (DB._pushRoster && DB._pushRoster.length) {
+      const ids = DB._pushRoster; delete DB._pushRoster; saveDB();
+      ids.forEach(id => {
+        const emp = DB.employees.find(e => e.id === id);
+        if (emp) CLOUD.push('employees', emp);
+      });
     }
     buildRoleSwitcher(); render();
   });

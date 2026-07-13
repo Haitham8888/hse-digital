@@ -161,27 +161,44 @@ const CLOUD = {
     return d;
   },
 
-  /* ---------- سحب دوري ---------- */
+  /* ---------- المزامنة الحية التلقائية ---------- */
   startPolling() {
     if (!this.enabled()) return;
-    setInterval(() => this.refresh(), 90000);
+    // كل 30 ثانية والتبويب ظاهر — وفور العودة للتبويب أو عودة الاتصال
+    setInterval(() => this.refresh(), 30000);
     document.addEventListener('visibilitychange', () => {
       if (!document.hidden) this.refresh();
     });
-    window.addEventListener('online', () => this.drain());
+    window.addEventListener('online', () => { this.drain(); this.refresh(); });
+  },
+
+  // بصمة خفيفة للحالة — لإعادة الرسم فقط عند تغير فعلي (بلا وميض)
+  _stamp() {
+    return ['permits', 'equipment', 'assessments', 'employees'].map(k => {
+      const list = DB[k] || [];
+      let max = '';
+      for (const o of list) if (String(o.updatedAt || '') > max) max = String(o.updatedAt || '');
+      return k + ':' + list.length + '|' + max;
+    }).join(';');
   },
 
   async refresh() {
     if (!this.enabled() || this._draining || document.hidden) return;
     try {
       const server = await this.api({ action: 'pull' }, 15000);
+      const before = this._stamp();
+      const permitsBefore = (DB.permits || []).length;
       this.applyServer(server);
       this.lastSync = new Date();
       this.setState(this.queue().length ? 'syncing' : 'ok');
-      // حدّث الشاشة فقط في صفحات العرض (لا نقاطع نموذجًا مفتوحًا)
+      if (this._stamp() === before) return; // لا تغيير — لا إعادة رسم
+
+      // لا نقاطع نموذج إدخال مفتوحًا أو لوحة توقيع
       const h = location.hash || '#/';
-      const safe = h === '#/' || h === '#/permits' || h === '#/equipment' || h === '#/risk' || h === '#/team';
-      if (safe && !document.querySelector('.modal-back')) render();
+      const editing = h === '#/permits/new' || h === '#/risk/new' ||
+        h.endsWith('/inspect') || h.startsWith('#/team/') || h === '#/equipment/new';
+      if (!editing && !document.querySelector('.modal-back')) render();
+      if ((DB.permits || []).length > permitsBefore) toast('وصل تصريح جديد من الفريق');
     } catch (e) { /* السحب الدوري صامت */ }
   },
 

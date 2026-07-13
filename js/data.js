@@ -424,22 +424,75 @@ const HSE = {
    البيانات التجريبية (Seed) — تُنشأ عند أول تشغيل فقط
    ============================================================ */
 
+/* الطاقم الحقيقي — مستخرج من وثائق المشروع نفسها:
+   الهيكل التنظيمي.docx، سجل التحضير Safety Inducted FO.xlsx،
+   التقارير الأسبوعية/الشهرية 2024-2025، والتصاريح الموقعة (السابقة PTW).
+   الترتيب مهم: أول نشط بالدور هو المعتمد الظاهر في سلسلة التواقيع. */
+const REAL_ROSTER = [
+  { id: 'e0', name: 'Admin', role: 'admin', company: 'SCC', phone: '', active: true },
+  // منشئو التصاريح — مهندسو الموقع (سجل التحضير)
+  { id: 'e1', name: 'Ahmed Ramdan', role: 'creator', company: 'RBC', phone: '', active: true },
+  { id: 'e7', name: 'Mustafa Ahmed', role: 'creator', company: 'RBC', phone: '', active: true },
+  // إدارة الموقع (الهيكل التنظيمي + توقيعات 2025)
+  { id: 'e2', name: 'Mustafa Mukhtar', role: 'siteManager', company: 'RBC', phone: '', active: true },
+  { id: 'e25', name: 'Samy Magdy', role: 'siteManager', company: 'RBC', phone: '', active: true },
+  { id: 'e26', name: 'El-Bahrawy Gado', role: 'siteManager', company: 'RBC', phone: '966535823231', active: true },
+  // مشرفو السلامة (الهيكل التنظيمي + توقيعات التصاريح)
+  { id: 'e3', name: 'Mohammed Naveed', role: 'hseSupervisor', company: 'RBC', phone: '', active: true },
+  { id: 'e13', name: 'Tanveer Ahmed', role: 'hseSupervisor', company: 'RBC', phone: '', active: true },
+  { id: 'e14', name: 'Irfan Naveed', role: 'hseSupervisor', company: 'RBC', phone: '', active: true },
+  { id: 'e15', name: 'Zahid', role: 'hseSupervisor', company: 'RBC', phone: '', active: true },
+  // مهندسو الاستشاري ESCC (توقيعات التصاريح 2024-2025)
+  { id: 'e4', name: 'Ahmed Salem', role: 'consultantEngineer', company: 'ESCC', phone: '', active: true },
+  { id: 'e21', name: 'Ahmed Fadel', role: 'consultantEngineer', company: 'ESCC', phone: '', active: true },
+  { id: 'e22', name: 'Karim Hesham', role: 'consultantEngineer', company: 'ESCC', phone: '', active: true },
+  { id: 'e23', name: 'M. Hassan', role: 'consultantEngineer', company: 'ESCC', phone: '', active: true },
+  // استشاريو السلامة ESCC
+  { id: 'e5', name: 'Emad Sabbagh', role: 'hseConsultant', company: 'ESCC', phone: '', active: true },
+  { id: 'e24', name: 'Anwar Ali', role: 'hseConsultant', company: 'ESCC', phone: '', active: true },
+  // فاحصو المعدات — مهندسو ومسؤولو السلامة (سجل التحضير + التقارير)
+  { id: 'e6', name: 'Khalid Rehman', role: 'inspector', company: 'RBC', phone: '', active: true },
+  { id: 'e16', name: 'Feras Hatan', role: 'inspector', company: 'RBC', phone: '', active: true },
+  { id: 'e17', name: 'Abdullah Al-Haqwi', role: 'inspector', company: 'RBC', phone: '', active: true },
+  { id: 'e18', name: 'Abdulrahman Zain Al-Deen', role: 'inspector', company: 'RBC', phone: '966557437556', active: true },
+  { id: 'e19', name: 'Fuad Allayl', role: 'inspector', company: 'RBC', phone: '', active: true },
+  { id: 'e20', name: 'Abdullah Muaidi', role: 'inspector', company: 'RBC', phone: '', active: true },
+  // المشرفون والعمال المنفذون (الهيكل التنظيمي + التصاريح + المخالفات)
+  { id: 'e27', name: 'Abdulrahman Jamal', role: 'worker', company: 'RBC', phone: '', active: true },
+  { id: 'e28', name: 'Sadky Kamel', role: 'worker', company: 'RBC', phone: '', active: true },
+  { id: 'e29', name: 'Ahmed Rabie', role: 'worker', company: 'RBC', phone: '', active: true },
+  { id: 'e30', name: 'Abdelaziz Tariq', role: 'worker', company: 'RBC', phone: '', active: true },
+  { id: 'e31', name: 'Ibrahim Morsi', role: 'worker', company: 'RBC', phone: '', active: true },
+  { id: 'e8', name: 'Ahmed Khafagy', role: 'worker', company: 'RBC', phone: '', active: true },
+  { id: 'e9', name: 'Mahmoud Reda', role: 'worker', company: 'RBC', phone: '', active: true },
+  { id: 'e10', name: 'Amr Mohamed', role: 'worker', company: 'RBC', phone: '', active: true },
+  { id: 'e11', name: 'Mohamed Amjad', role: 'worker', company: 'RBC', phone: '', active: true },
+  { id: 'e12', name: 'Rahim Khan', role: 'worker', company: 'RBC', phone: '', active: true },
+  { id: 'e32', name: 'Ramy Abdelwahab', role: 'worker', company: 'SUB', phone: '', active: true },
+  { id: 'e33', name: 'Farrag Omar Ali', role: 'worker', company: 'SUB', phone: '966546640956', active: true },
+];
+
 function seedEmployees() {
-  return withEmail_([
-    { id: 'e0', name: 'Admin', role: 'admin', company: 'SCC', phone: '', active: true },
-    { id: 'e1', name: 'Sayed Moqeer', role: 'creator', company: 'RBC', phone: '', active: true },
-    { id: 'e2', name: 'Mostafa Mukhtar', role: 'siteManager', company: 'RBC', phone: '', active: true },
-    { id: 'e3', name: 'Mohammed Naveed', role: 'hseSupervisor', company: 'RBC', phone: '', active: true },
-    { id: 'e4', name: 'M. Hassan', role: 'consultantEngineer', company: 'ESCC', phone: '', active: true },
-    { id: 'e5', name: 'Anwar Ali', role: 'hseConsultant', company: 'ESCC', phone: '', active: true },
-    { id: 'e6', name: 'Khalid Rehman', role: 'inspector', company: 'RBC', phone: '', active: true },
-    { id: 'e7', name: 'Mostafa Ahmed', role: 'worker', company: 'RBC', phone: '', active: true },
-    { id: 'e8', name: 'Ahmed Khafagy', role: 'worker', company: 'RBC', phone: '', active: true },
-    { id: 'e9', name: 'Mahmoud Reda', role: 'worker', company: 'RBC', phone: '', active: true },
-    { id: 'e10', name: 'Amr Mohamed', role: 'worker', company: 'RBC', phone: '', active: true },
-    { id: 'e11', name: 'Mohamed Amjad', role: 'worker', company: 'RBC', phone: '', active: true },
-    { id: 'e12', name: 'Rahim Khan', role: 'worker', company: 'RBC', phone: '', active: true },
-  ]);
+  return withEmail_(REAL_ROSTER.map(e => ({ ...e })));
+}
+
+/* تحديث سجل قائم بالطاقم الحقيقي — لا يلمس أي موظف عُدّل يدويًا */
+function applyRealRoster(db) {
+  const byId = new Map(db.employees.map(e => [e.id, e]));
+  const changed = [];
+  REAL_ROSTER.forEach(r => {
+    const cur = byId.get(r.id);
+    if (!cur) {
+      const ne = { email: '', ...r };
+      db.employees.push(ne); changed.push(ne.id);
+    } else if (!cur.updatedAt) {
+      // لم يُعدل يدويًا قط — حدّثه بالبيانات الموثقة
+      Object.assign(cur, { name: r.name, role: r.role, company: r.company });
+      if (r.phone && !cur.phone) cur.phone = r.phone;
+      changed.push(cur.id);
+    }
+  });
+  return changed;
 }
 
 function withEmail_(list) {
