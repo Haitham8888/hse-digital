@@ -30,8 +30,41 @@ function migrateDB() {
     DB.settings = DB.settings || {};
     DB.v = 3;
   }
+  if (DB.v < 4) {
+    // نتائج الفحص الجديدة (مطابقة للنموذج): fit / partial / unfit
+    DB.equipment.forEach(e => {
+      if (e.ownership === undefined) e.ownership = 'own';
+      (e.inspections || []).forEach(i => {
+        if (i.result === 'pass') i.result = 'fit';
+        if (i.result === 'fail') i.result = 'unfit';
+      });
+    });
+    if ((DB.counters.RA || 0) < 54) DB.counters.RA = 54;
+    DB.v = 4;
+  }
+  if (DB.v < 5) {
+    // أعمدة تقييم المخاطر بالنموذج المعتمد (P/S + المتبقي)
+    DB.assessments.forEach(ra => {
+      if (!ra.refNo) ra.refNo = 'RBC-HSE-' + String(ra.seq).padStart(3, '0');
+      if (!ra.assessor) ra.assessor = 'HSE Department';
+      (ra.rows || []).forEach(r => {
+        if (r.p === undefined) r.p = r.lik ?? 3;
+        if (r.s === undefined) r.s = r.sev ?? 3;
+        if (r.resP === undefined) r.resP = 1;
+        if (r.resS === undefined) r.resS = r.s;
+        if (r.consequence === undefined) r.consequence = '';
+      });
+    });
+    DB.v = 5;
+  }
   saveDB();
 }
+
+const INSP_RESULTS = {
+  fit: { en: 'FIT', ar: 'صالحة للعمل', cls: 'pass' },
+  partial: { en: 'PARTIALLY FIT', ar: 'صالحة جزئيًا', cls: 'due' },
+  unfit: { en: 'UNFIT', ar: 'غير صالحة', cls: 'fail' },
+};
 function saveDB() {
   try { localStorage.setItem(DB_KEY, JSON.stringify(DB)); }
   catch (e) { /* بيئة معاينة بدون تخزين — يستمر العمل في الذاكرة */ }
@@ -158,6 +191,7 @@ const routes = [
   { re: /^#\/permits$/, view: viewPermits, nav: 'permits' },
   { re: /^#\/permit\/([^/]+)$/, view: viewPermitDetail, nav: 'permits' },
   { re: /^#\/equipment$/, view: viewEquipment, nav: 'equipment' },
+  { re: /^#\/equipment\/new$/, view: viewEquipmentNew, nav: 'equipment' },
   { re: /^#\/equipment\/([^/]+)\/inspect$/, view: viewInspect, nav: 'equipment' },
   { re: /^#\/equipment\/([^/]+)$/, view: viewEquipmentDetail, nav: 'equipment' },
   { re: /^#\/risk\/new$/, view: viewRiskNew, nav: 'risk' },
@@ -166,6 +200,8 @@ const routes = [
   { re: /^#\/team\/new$/, view: viewTeamForm, nav: 'team' },
   { re: /^#\/team\/([^/]+)$/, view: viewTeamForm, nav: 'team' },
   { re: /^#\/team$/, view: viewTeam, nav: 'team' },
+  { re: /^#\/files$/, view: viewFiles, nav: 'files' },
+  { re: /^#\/files\/([^/]+)$/, view: viewFiles, nav: 'files' },
 ];
 
 function render() {
@@ -192,7 +228,7 @@ let afterRender = null;
 function equipmentDue(eq) {
   const last = eq.inspections[0];
   if (!last) return 'due';
-  if (last.result === 'fail') return 'fail';
+  if (last.result === 'unfit') return 'fail';
   return daysSince(last.date) > 30 ? 'due' : 'ok';
 }
 
@@ -258,7 +294,18 @@ function viewDashboard() {
         </div>`;
       }).join('')}
     </div>
-  </div>` : ''}`;
+  </div>` : ''}
+
+  <div class="card">
+    <div class="row-item" onclick="location.hash='#/files'">
+      <div class="eq-ic" style="background:var(--amber-soft);color:var(--amber-ink)">${icon('grid', 20)}</div>
+      <div class="row-main">
+        <div class="row-title">ملفات المشروع — Google Drive</div>
+        <div class="row-meta"><span>PTW القديمة · تقييمات المخاطر · الأرشيف · كل المجلدات</span></div>
+      </div>
+      ${icon('back', 16)}
+    </div>
+  </div>`;
 }
 
 function rowPermit(p) {
@@ -1045,8 +1092,9 @@ function viewEquipment() {
   <div class="page-head">
     <div class="grow">
       <div class="page-title">فحص المعدات</div>
-      <div class="page-sub">كود لون هذا الشهر: <span class="month-dot" style="background:${mc.hex}"></span> ${mc.ar} — الفحص شهري لكل معدة</div>
+      <div class="page-sub">كود لون هذا الشهر: <span class="month-dot" style="background:${mc.hex}"></span> ${mc.ar} — لكل معدة نموذج فحص خاص بها (${Object.keys(HSE.equipmentTypes).length} نوعًا)</div>
     </div>
+    <a class="btn btn-amber" href="#/equipment/new">${icon('plus', 16)} معدة جديدة</a>
   </div>
   <div class="eq-grid">
     ${DB.equipment.map(e => {
@@ -1077,6 +1125,10 @@ function viewEquipmentDetail(id) {
   afterRender = () => {
     drawQR($('#eq-qr'), location.origin + location.pathname + '#/equipment/' + e.id + '/inspect');
     $('#eq-sticker')?.addEventListener('click', () => printSticker(e));
+    $$('.js-ins-print').forEach(b => b.addEventListener('click', ev => {
+      ev.stopPropagation();
+      printInspection(e, e.inspections[+b.dataset.idx]);
+    }));
   };
 
   return `
@@ -1106,14 +1158,18 @@ function viewEquipmentDetail(id) {
   <div class="card">
     <div class="card-head">${icon('history', 17)} سجل الفحوصات (${e.inspections.length})</div>
     <div class="row-list">
-      ${e.inspections.length ? e.inspections.map(i => `
+      ${e.inspections.length ? e.inspections.map((i, idx) => {
+        const R = INSP_RESULTS[i.result] || INSP_RESULTS.fit;
+        return `
         <div class="row-item" style="cursor:default">
           <div class="row-main">
-            <div class="row-title">${i.result === 'pass' ? 'فحص سليم' : 'فحص غير مجتاز'} — ${esc(i.by)}</div>
-            <div class="row-meta"><span class="mono">${fmtDate(i.date)}</span>${i.notes ? `<span>${esc(i.notes)}</span>` : ''}</div>
+            <div class="row-title">${R.ar} — ${esc(i.by)}</div>
+            <div class="row-meta"><span class="mono">${i.clNo ? esc(i.clNo) + ' · ' : ''}${fmtDate(i.date)}</span>${i.notes ? `<span>${esc(i.notes)}</span>` : ''}</div>
           </div>
-          <span class="insp-badge ${i.result}">${i.result === 'pass' ? 'PASS' : 'FAIL'}</span>
-        </div>`).join('') : `<div class="empty">لا توجد فحوصات مسجلة</div>`}
+          <span class="insp-badge ${R.cls}">${R.en}</span>
+          <button class="btn btn-sm js-ins-print" data-idx="${idx}">${icon('print', 14)}</button>
+        </div>`;
+      }).join('') : `<div class="empty">لا توجد فحوصات مسجلة</div>`}
     </div>
   </div>`;
 }
@@ -1123,7 +1179,10 @@ function viewInspect(id) {
   const e = DB.equipment.find(x => x.id === id);
   if (!e) return `<div class="empty">المعدة غير موجودة</div>`;
   const ty = HSE.equipmentTypes[e.type];
-  if (!inspDraft || inspDraft.eqId !== id) inspDraft = { eqId: id, items: ty.items.map(() => 0), notes: '' };
+  if (!inspDraft || inspDraft.eqId !== id) {
+    inspDraft = { eqId: id, items: ty.items.map(() => 0), notes: '', result: '' };
+  }
+  const clNo = 'CL-' + String(DB.counters.INS).padStart(4, '0');
 
   afterRender = () => {
     $$('.seg3').forEach(seg => {
@@ -1131,53 +1190,121 @@ function viewInspect(id) {
         const b = ev.target.closest('button'); if (!b) return;
         inspDraft.items[+seg.dataset.i] = +b.dataset.v;
         $$('button', seg).forEach(x => x.classList.toggle('on', x === b));
+        // اقتراح النتيجة تلقائيًا حسب الإجابات
+        if (!inspDraft.items.some(v => v === 0)) {
+          const noCount = inspDraft.items.filter(v => v === 2).length;
+          const suggested = noCount === 0 ? 'fit' : noCount <= 2 ? 'partial' : 'unfit';
+          if (!inspDraft.result) setInsResult(suggested);
+        }
       });
     });
+    $$('.js-res').forEach(b => b.addEventListener('click', () => setInsResult(b.dataset.r)));
     $('#ins-notes').addEventListener('input', ev => inspDraft.notes = ev.target.value);
     $('#ins-save').addEventListener('click', () => {
-      if (inspDraft.items.some(v => v === 0)) { toast('أجب على جميع البنود'); return; }
+      if (inspDraft.items.some(v => v === 0)) { toast('أجب على جميع البنود بـ Yes أو No'); return; }
+      if (!inspDraft.result) { toast('حدد نتيجة الفحص (FIT / PARTIALLY FIT / UNFIT)'); return; }
       openSignature({
-        title: 'توقيع الفاحص', name: roleName(DB.currentRole),
+        title: 'توقيع الفاحص — Inspected By', name: roleName(DB.currentRole),
         onDone: (sig) => {
-          const result = inspDraft.items.includes(2) ? 'fail' : 'pass';
+          const result = inspDraft.result;
           e.inspections.unshift({
-            id: 'i' + (DB.counters.INS++),
+            id: 'i' + (DB.counters.INS++), clNo,
             date: todayISO(), by: roleName(DB.currentRole),
             result, notes: inspDraft.notes.trim(), items: [...inspDraft.items], sig,
           });
           saveDB(); CLOUD.push('equipment', e); inspDraft = null;
-          toast(result === 'pass' ? 'الفحص سليم — المعدة جاهزة للعمل' : 'الفحص غير مجتاز — تم إيقاف المعدة');
+          toast(result === 'fit' ? 'النتيجة: صالحة للعمل ✓' : result === 'partial' ? 'النتيجة: صالحة جزئيًا — عالج الملاحظات' : 'النتيجة: غير صالحة — أوقفت المعدة');
           location.hash = '#/equipment/' + e.id;
         },
       });
     });
   };
 
+  const setInsResult = (r) => {
+    inspDraft.result = r;
+    $$('.js-res').forEach(x => x.classList.toggle('on', x.dataset.r === r));
+  };
+  window.setInsResult = setInsResult;
+
   return `
   <div class="page-head">
     <a class="btn btn-ghost btn-sm" href="#/equipment/${e.id}" style="padding-inline:6px">${icon('back', 18)}</a>
     <div class="grow">
-      <div class="row-code" style="font-size:13px">${e.code}</div>
-      <div class="page-title" style="font-size:18px">فحص ${esc(ty.ar)} — ${esc(e.model)}</div>
-      <div class="page-sub">الفاحص: ${esc(roleName(DB.currentRole))} · ${fmtDate(new Date().toISOString())}</div>
+      <div class="row-code" style="font-size:13px">${clNo} · ${e.code}</div>
+      <div class="page-title" style="font-size:18px">Equipment Inspection Checklist — ${esc(ty.ar)}</div>
+      <div class="page-sub">${esc(e.model)} · لوحة: ${esc(e.plate)} · ${roleAr('inspector')}: ${esc(roleName(DB.currentRole))} · ${fmtDate(new Date().toISOString())}</div>
     </div>
   </div>
   <div class="card card-pad">
     ${ty.items.map((item, i) => `
       <div class="ck-item">
         <div class="ck-no">${i + 1}</div>
-        <div class="ck-text"><div class="ar">${esc(item)}</div></div>
+        <div class="ck-text"><div class="ar">${esc(item.ar)}</div><div class="en">${esc(item.en)}</div></div>
         <div class="seg3" data-i="${i}">
-          <button class="yes" data-v="1">YES</button>
-          <button class="no" data-v="2">NO</button>
-          <button class="na" data-v="3">N/A</button>
+          <button class="yes" data-v="1" style="width:52px">YES</button>
+          <button class="no" data-v="2" style="width:52px">NO</button>
         </div>
       </div>`).join('')}
     <div class="divider"></div>
-    <div class="field"><label>ملاحظات <small>(اختياري)</small></label>
+    <div class="field"><label>ملاحظات / Remarks <small>(اختياري)</small></label>
       <textarea id="ins-notes" placeholder="أي ملاحظات على حالة المعدة…"></textarea></div>
-    <div class="hint" style="margin:8px 0">أي إجابة بـ NO تُوقف المعدة تلقائيًا حتى الإصلاح وإعادة الفحص.</div>
+    <div style="font-size:13px;font-weight:700;margin:10px 0 6px">النتيجة النهائية — Overall Result:</div>
+    <div class="action-bar" style="margin-bottom:12px">
+      <button class="btn js-res res-fit" data-r="fit">FIT — صالحة</button>
+      <button class="btn js-res res-partial" data-r="partial">PARTIALLY FIT — جزئيًا</button>
+      <button class="btn js-res res-unfit" data-r="unfit">UNFIT — غير صالحة</button>
+    </div>
+    <div class="hint" style="margin:8px 0">نتيجة UNFIT تُوقف المعدة تلقائيًا حتى الإصلاح وإعادة الفحص.</div>
     <button class="btn btn-green btn-block" id="ins-save">${icon('pen', 16)} توقيع وحفظ الفحص</button>
+  </div>`;
+}
+
+/* إضافة معدة جديدة */
+function viewEquipmentNew() {
+  afterRender = () => {
+    $('#eq-save').addEventListener('click', () => {
+      const type = $('#eq-type').value;
+      const model = $('#eq-model').value.trim();
+      if (!model) { toast('اكتب موديل / وصف المعدة'); return; }
+      const num = DB.equipment.length + 1;
+      const eq = {
+        id: 'eq' + Date.now().toString(36),
+        code: 'EQ-' + String(num).padStart(3, '0'),
+        type, model,
+        plate: $('#eq-plate').value.trim() || '—',
+        location: $('#eq-location').value.trim() || $('#eq-building').value,
+        ownership: $('#eq-own').value,
+        inspections: [],
+      };
+      DB.equipment.push(eq); saveDB(); CLOUD.push('equipment', eq);
+      toast(`تمت إضافة ${eq.code} — اطبع ملصق QR والصقه عليها`);
+      location.hash = '#/equipment/' + eq.id;
+    });
+  };
+  const groups = Object.entries(HSE.equipmentTypes);
+  return `
+  <div class="page-head">
+    <a class="btn btn-ghost btn-sm" href="#/equipment" style="padding-inline:6px">${icon('back', 18)}</a>
+    <div class="grow"><div class="page-title">معدة جديدة</div>
+    <div class="page-sub">اختر النوع — لكل نوع نموذج فحص خاص به</div></div>
+  </div>
+  <div class="card card-pad">
+    <div class="form-grid">
+      <div class="field full"><label>نوع المعدة</label>
+        <select id="eq-type">${groups.map(([k, t]) => `<option value="${k}">${t.ar} — ${t.en}</option>`).join('')}</select></div>
+      <div class="field full"><label>الموديل / الوصف</label>
+        <input type="text" id="eq-model" dir="ltr" placeholder="CAT 950GC"></div>
+      <div class="field"><label>رقم اللوحة <small>(إن وجد)</small></label>
+        <input type="text" id="eq-plate" dir="ltr" placeholder="1234 ABC"></div>
+      <div class="field"><label>الملكية</label>
+        <select id="eq-own">${HSE.ownership.map(o => `<option value="${o.key}">${o.ar} — ${o.en}</option>`).join('')}</select></div>
+      <div class="field"><label>المبنى</label>
+        <select id="eq-building">${HSE.buildings.map(b => `<option>${b}</option>`).join('')}</select></div>
+      <div class="field"><label>وصف الموقع <small>(اختياري)</small></label>
+        <input type="text" id="eq-location" placeholder="B02 — منطقة التفريغ"></div>
+    </div>
+    <div class="divider"></div>
+    <button class="btn btn-green btn-block" id="eq-save">${icon('check', 16)} حفظ المعدة</button>
   </div>`;
 }
 
@@ -1190,6 +1317,70 @@ function drawQR(el, text) {
     el.innerHTML = `<div style="width:150px;height:150px;display:grid;place-items:center;border:1.5px dashed var(--line-2);border-radius:6px;color:var(--mut)">
       ${icon('qr', 44)}<div class="hint" style="margin-top:-30px">QR في النسخة المستضافة</div></div>`;
   }
+}
+
+/* نموذج فحص المعدة — مطابق لقالب "Equipment Inspection Checklist" في Drive */
+function buildInspectionSheetHTML(e, insp) {
+  const ty = HSE.equipmentTypes[e.type];
+  const own = HSE.ownership.find(o => o.key === (e.ownership || 'own')) || HSE.ownership[0];
+  const R = INSP_RESULTS[insp.result] || INSP_RESULTS.fit;
+  const mark = (v) => v === 1 ? 'Yes' : v === 2 ? 'No' : '';
+  return `
+  <div class="sheet">
+    <div class="sh-head">
+      <div class="sh-party"><div class="cap">The Contractor</div><div class="nm">RBC</div><div class="ar">${esc(HSE.project.contractorEn)}</div></div>
+      <div class="sh-title"><div class="t">Equipment Inspection Checklist</div><div class="t-ar">${esc(ty.en)} — ${esc(ty.ar)}</div></div>
+      <div class="sh-party"><div class="cap">Project</div><div class="nm">SCC</div><div class="ar">${esc(HSE.project.employerEn)}</div></div>
+    </div>
+    <div class="sh-meta" style="grid-template-columns:1fr 1fr 1fr 1fr">
+      <div><b>Checklist No.:</b> ${esc(insp.clNo || '—')}</div>
+      <div><b>Date:</b> ${fmtDate(insp.date)}</div>
+      <div><b>Plate No.:</b> ${esc(e.plate)}</div>
+      <div><b>Ownership:</b> ${own.en}</div>
+    </div>
+    <div class="sh-desc">
+      <span class="lbl">Equipment Name & Number:</span> ${esc(ty.en)} — ${esc(e.model)} (${esc(e.code)})
+      <br><span class="lbl">Location:</span> ${esc(e.location)}
+      <br><span style="font-size:8pt;color:#444">Please write Yes or No in the given box and if some comments write in remarks column.</span>
+    </div>
+    <table class="sh-ck">
+      <tr><th style="width:26px">SN.</th><th>Description</th><th style="width:52px">Yes/No</th><th style="width:120px">Remarks</th></tr>
+      ${ty.items.map((item, i) => `
+      <tr>
+        <td class="n">${i + 1}</td>
+        <td>${esc(item.en)}</td>
+        <td class="c">${mark(insp.items[i])}</td>
+        <td></td>
+      </tr>`).join('')}
+    </table>
+    ${insp.notes ? `<div class="sh-desc" style="border-top:0"><span class="lbl">Remarks:</span> ${esc(insp.notes)}</div>` : ''}
+    <div class="sh-block">
+      <span class="bt">Overall Result:</span>
+      &nbsp; [${insp.result === 'fit' ? ' ✔ ' : '&nbsp;&nbsp;&nbsp;'}] FIT
+      &nbsp; [${insp.result === 'partial' ? ' ✔ ' : '&nbsp;&nbsp;&nbsp;'}] PARTIALLY FIT
+      &nbsp; [${insp.result === 'unfit' ? ' ✔ ' : '&nbsp;&nbsp;&nbsp;'}] UNFIT
+    </div>
+    <div class="sh-signs" style="grid-template-columns:1fr 1fr">
+      <div>
+        <div class="r">Inspected By</div>
+        <div class="nm">${esc(insp.by)}</div>
+        <div class="sg">${insp.sig ? `<img src="${insp.sig}">` : ''}</div>
+        <div class="dt">${fmtDate(insp.date)}</div>
+      </div>
+      <div>
+        <div class="r">Reviewed By (HSE)</div>
+        <div class="nm">${esc(roleName('hseSupervisor'))}</div>
+        <div class="sg"></div>
+        <div class="dt">Sign / Date: ______________</div>
+      </div>
+    </div>
+    <div class="sh-foot"><span>HSE Digital System — ${esc(R.en)}</span><span>${esc(e.code)} · ${fmtDate(insp.date)}</span></div>
+  </div>`;
+}
+
+function printInspection(e, insp) {
+  $('#printRoot').innerHTML = buildInspectionSheetHTML(e, insp);
+  window.print();
 }
 
 function printSticker(e) {
@@ -1210,12 +1401,25 @@ function printSticker(e) {
 /* ============================================================
    تقييم المخاطر
    ============================================================ */
-function riskScore(sev, lik) {
-  const s = sev * lik;
-  const cls = s <= 6 ? 'lo' : s <= 12 ? 'md' : 'hi';
-  const lbl = s <= 6 ? 'منخفض' : s <= 12 ? 'متوسط' : 'عالٍ';
-  return `<span class="risk-score ${cls}">${sev}×${lik} = ${s} · ${lbl}</span>`;
+/* نطاقات التقييم كما في النموذج المعتمد: 1-4 Low · 5-12 Medium · 15-25 High */
+function riskBand(p, s) {
+  const rr = p * s;
+  if (rr <= 4) return { rr, letter: 'L', ar: 'منخفض', cls: 'lo' };
+  if (rr <= 12) return { rr, letter: 'M', ar: 'متوسط', cls: 'md' };
+  return { rr, letter: 'H', ar: 'عالٍ', cls: 'hi' };
 }
+function riskScore(p, s) {
+  const b = riskBand(p, s);
+  return `<span class="risk-score ${b.cls}">P${p}×S${s}=${b.rr} · ${b.letter}</span>`;
+}
+function raRefNo(ra) { return ra.refNo || ('RBC-HSE-' + String(ra.seq).padStart(3, '0')); }
+const RA_SECTIONS_DEFAULT = {
+  persons: 'Workers, operators, engineers and visitors present at the work area.',
+  ppe: 'Safety helmet, safety shoes, hi-vis vest, hand gloves, safety glasses + task-specific PPE.',
+  training: 'Toolbox talk on this assessment before starting the activity; only trained and certified personnel.',
+  emergency: 'Site emergency plan applies — first aider available, assembly point and emergency numbers displayed.',
+  monitoring: 'Monitored by HSE department; re-assessed upon any change of scope or after any incident.',
+};
 
 function viewRisk() {
   const list = [...DB.assessments].sort((a, b) => b.date.localeCompare(a.date));
@@ -1231,7 +1435,7 @@ function viewRisk() {
     ${list.length ? list.map(ra => `
       <div class="row-item" onclick="location.hash='#/risk/${ra.id}'">
         <div class="row-main">
-          <div class="row-code">RA-${String(ra.seq).padStart(3, '0')}</div>
+          <div class="row-code">${raRefNo(ra)}</div>
           <div class="row-title">${esc(ra.activity)}</div>
           <div class="row-meta"><span>${esc(ra.location)}</span><span class="mono">${fmtDate(ra.date)}</span><span>${ra.rows.length} مخاطر</span></div>
         </div>
@@ -1242,7 +1446,7 @@ function viewRisk() {
 
 let raDraft = null;
 function viewRiskNew() {
-  if (!raDraft) raDraft = { activity: '', location: 'B02', rows: [], suggested: null };
+  if (!raDraft) raDraft = { activity: '', location: 'B02', assessor: 'HSE Department', rows: [], suggested: null };
 
   afterRender = () => {
     const inp = $('#ra-activity');
@@ -1254,8 +1458,9 @@ function viewRiskNew() {
       renderRaSuggest();
     });
     $('#ra-location').addEventListener('change', e => raDraft.location = e.target.value);
+    $('#ra-assessor').addEventListener('input', e => raDraft.assessor = e.target.value);
     $('#ra-add').addEventListener('click', () => {
-      raDraft.rows.push({ hazard: '', control: '', sev: 3, lik: 3 });
+      raDraft.rows.push({ hazard: '', risks: '', consequence: '', control: '', p: 3, s: 3, resP: 1, resS: 3 });
       renderRaRows();
     });
     $('#ra-save').addEventListener('click', async () => {
@@ -1269,12 +1474,14 @@ function viewRiskNew() {
       } else { raSeq = DB.counters.RA++; }
       const ra = {
         id: 'ra' + Date.now().toString(36), seq: raSeq,
+        refNo: 'RBC-HSE-' + String(raSeq).padStart(3, '0'),
         activity: raDraft.activity.trim(), location: raDraft.location,
+        assessor: (raDraft.assessor || 'HSE Department').trim(),
         date: todayISO(), by: roleName(DB.currentRole) || HSE.creator.name,
-        rows,
+        rows, sections: { ...RA_SECTIONS_DEFAULT },
       };
       DB.assessments.push(ra); saveDB(); CLOUD.push('assessments', ra); raDraft = null;
-      toast(`تم حفظ التقييم RA-${String(ra.seq).padStart(3, '0')}`);
+      toast(`تم حفظ التقييم ${ra.refNo}`);
       location.hash = '#/risk/' + ra.id;
     });
     renderRaSuggest(); renderRaRows();
@@ -1284,16 +1491,18 @@ function viewRiskNew() {
   <div class="page-head">
     <a class="btn btn-ghost btn-sm" href="#/risk" style="padding-inline:6px">${icon('back', 18)}</a>
     <div class="grow">
-      <div class="page-title">تقييم مخاطر جديد</div>
-      <div class="page-sub">RA-${String(DB.counters.RA).padStart(3, '0')}</div>
+      <div class="page-title">تقييم مخاطر جديد — RISK ASSESSMENT</div>
+      <div class="page-sub mono" style="direction:ltr;text-align:end">RBC-HSE-${String(DB.counters.RA).padStart(3, '0')}</div>
     </div>
   </div>
   <div class="card card-pad">
     <div class="form-grid">
-      <div class="field full"><label>النشاط</label>
+      <div class="field full"><label>النشاط <small>Title of the activity</small></label>
         <input type="text" id="ra-activity" value="${esc(raDraft.activity)}" placeholder="مثال: أعمال ردم ودك في المبنى B02…"></div>
       <div class="field"><label>الموقع</label>
         <select id="ra-location">${HSE.buildings.map(b => `<option ${b === raDraft.location ? 'selected' : ''}>${b}</option>`).join('')}</select></div>
+      <div class="field"><label>المُقيِّم <small>Assessor</small></label>
+        <input type="text" id="ra-assessor" value="${esc(raDraft.assessor)}" dir="ltr"></div>
     </div>
     <div id="ra-suggest"></div>
     <div class="divider"></div>
@@ -1318,7 +1527,7 @@ function renderRaSuggest() {
     <button class="btn btn-sm btn-dark" id="ra-apply">${icon('plus', 13)} إضافة الاقتراحات للجدول</button>
   </div>`;
   $('#ra-apply').addEventListener('click', () => {
-    s.rows.forEach(r => raDraft.rows.push({ ...r }));
+    s.rows.forEach(r => raDraft.rows.push(raRowFromLib(r)));
     raDraft.suggested = null;
     renderRaSuggest(); renderRaRows();
     toast('أُضيفت المخاطر المقترحة — عدّلها كما يناسب الموقع');
@@ -1331,36 +1540,43 @@ function renderRaRows() {
     box.innerHTML = `<div class="empty" style="padding:18px">اكتب النشاط بالأعلى لعرض الاقتراحات، أو أضف المخاطر يدويًا</div>`;
     return;
   }
+  const sel5 = (cls, i, val) =>
+    `<select class="mini-select ${cls}" data-i="${i}">${[1, 2, 3, 4, 5].map(v => `<option ${v === val ? 'selected' : ''}>${v}</option>`).join('')}</select>`;
+
   box.innerHTML = raDraft.rows.map((r, i) => `
   <div class="ra-row">
     <div class="rr-head">
       <div style="flex:1">
-        <input type="text" class="js-hz" data-i="${i}" value="${esc(r.hazard)}" placeholder="الخطر…" style="width:100%;border:0;outline:0;font-weight:700;font-size:13.5px;background:transparent">
+        <input type="text" class="js-hz" data-i="${i}" value="${esc(r.hazard)}" placeholder="الخطر وأسبابه — Hazard (causes)…" style="width:100%;border:0;outline:0;font-weight:700;font-size:13.5px;background:transparent">
       </div>
       <button class="rr-del js-del" data-i="${i}">${icon('x', 15)}</button>
     </div>
-    <textarea class="js-ctl" data-i="${i}" placeholder="الاحتياطات (سطر لكل احتياط)…" style="width:100%;border:1px dashed var(--line);border-radius:5px;padding:7px 10px;font-size:12.5px;margin-top:6px;min-height:60px">${esc(r.control)}</textarea>
-    <div style="display:flex;gap:8px;align-items:center;margin-top:7px;flex-wrap:wrap">
-      <label style="font-size:11.5px;color:var(--mut)">الشدة
-        <select class="mini-select js-sev" data-i="${i}">${[1,2,3,4,5].map(v => `<option ${v === r.sev ? 'selected' : ''}>${v}</option>`).join('')}</select>
-      </label>
-      <label style="font-size:11.5px;color:var(--mut)">الاحتمالية
-        <select class="mini-select js-lik" data-i="${i}">${[1,2,3,4,5].map(v => `<option ${v === r.lik ? 'selected' : ''}>${v}</option>`).join('')}</select>
-      </label>
-      <span class="js-score" data-i="${i}">${riskScore(r.sev, r.lik)}</span>
+    <input type="text" class="js-cons" data-i="${i}" value="${esc(r.consequence || '')}" placeholder="العواقب المحتملة — Consequences/Impact…" style="width:100%;border:0;border-bottom:1px dashed var(--line);outline:0;font-size:12.5px;padding:4px 0;background:transparent">
+    <textarea class="js-ctl" data-i="${i}" placeholder="الاحتياطات (سطر لكل احتياط) — Control measures…" style="width:100%;border:1px dashed var(--line);border-radius:5px;padding:7px 10px;font-size:12.5px;margin-top:6px;min-height:60px">${esc(r.control)}</textarea>
+    <div style="display:flex;gap:10px;align-items:center;margin-top:7px;flex-wrap:wrap">
+      <label style="font-size:11.5px;color:var(--mut)">P ${sel5('js-p', i, r.p)}</label>
+      <label style="font-size:11.5px;color:var(--mut)">S ${sel5('js-s', i, r.s)}</label>
+      <span class="js-score" data-i="${i}">${riskScore(r.p, r.s)}</span>
+      <span style="color:var(--line-2)">→</span>
+      <label style="font-size:11.5px;color:var(--mut)">المتبقي P ${sel5('js-rp', i, r.resP)}</label>
+      <label style="font-size:11.5px;color:var(--mut)">S ${sel5('js-rs', i, r.resS)}</label>
+      <span class="js-rscore" data-i="${i}">${riskScore(r.resP, r.resS)}</span>
     </div>
   </div>`).join('');
 
-  $$('.js-hz', box).forEach(el => el.addEventListener('input', () => raDraft.rows[+el.dataset.i].hazard = el.value));
-  $$('.js-ctl', box).forEach(el => el.addEventListener('input', () => raDraft.rows[+el.dataset.i].control = el.value));
-  $$('.js-sev', box).forEach(el => el.addEventListener('change', () => {
-    const r = raDraft.rows[+el.dataset.i]; r.sev = +el.value;
-    $(`.js-score[data-i="${el.dataset.i}"]`, box).innerHTML = riskScore(r.sev, r.lik);
-  }));
-  $$('.js-lik', box).forEach(el => el.addEventListener('change', () => {
-    const r = raDraft.rows[+el.dataset.i]; r.lik = +el.value;
-    $(`.js-score[data-i="${el.dataset.i}"]`, box).innerHTML = riskScore(r.sev, r.lik);
-  }));
+  const bind = (cls, fn) => $$(cls, box).forEach(el => el.addEventListener(el.tagName === 'SELECT' ? 'change' : 'input', () => fn(raDraft.rows[+el.dataset.i], el)));
+  bind('.js-hz', (r, el) => r.hazard = el.value);
+  bind('.js-cons', (r, el) => r.consequence = el.value);
+  bind('.js-ctl', (r, el) => r.control = el.value);
+  const rescore = (el) => {
+    const r = raDraft.rows[+el.dataset.i];
+    $(`.js-score[data-i="${el.dataset.i}"]`, box).innerHTML = riskScore(r.p, r.s);
+    $(`.js-rscore[data-i="${el.dataset.i}"]`, box).innerHTML = riskScore(r.resP, r.resS);
+  };
+  bind('.js-p', (r, el) => { r.p = +el.value; rescore(el); });
+  bind('.js-s', (r, el) => { r.s = +el.value; rescore(el); });
+  bind('.js-rp', (r, el) => { r.resP = +el.value; rescore(el); });
+  bind('.js-rs', (r, el) => { r.resS = +el.value; rescore(el); });
   $$('.js-del', box).forEach(el => el.addEventListener('click', () => {
     raDraft.rows.splice(+el.dataset.i, 1); renderRaRows();
   }));
@@ -1369,22 +1585,88 @@ function renderRaRows() {
 function viewRiskDetail(id) {
   const ra = DB.assessments.find(x => x.id === id);
   if (!ra) return `<div class="empty">التقييم غير موجود</div>`;
+  afterRender = () => { $('#ra-print')?.addEventListener('click', () => printRA(ra)); };
   return `
   <div class="page-head">
     <a class="btn btn-ghost btn-sm" href="#/risk" style="padding-inline:6px">${icon('back', 18)}</a>
     <div class="grow">
-      <div class="row-code" style="font-size:13px">RA-${String(ra.seq).padStart(3, '0')}</div>
+      <div class="row-code" style="font-size:13px">${raRefNo(ra)}</div>
       <div class="page-title" style="font-size:18px">${esc(ra.activity)}</div>
-      <div class="page-sub">${esc(ra.location)} · ${fmtDate(ra.date)} · أعده ${esc(ra.by)}</div>
+      <div class="page-sub">${esc(ra.location)} · ${fmtDate(ra.date)} · ${esc(ra.assessor || ra.by)}</div>
     </div>
+    <button class="btn" id="ra-print">${icon('print', 15)} PDF / طباعة</button>
   </div>
   <div class="card card-pad">
     ${ra.rows.map((r, i) => `
     <div class="ra-row">
-      <div class="rr-head"><div class="rr-hz">${i + 1}. ${esc(r.hazard)}</div>${riskScore(r.sev, r.lik)}</div>
+      <div class="rr-head"><div class="rr-hz">${i + 1}. ${esc(r.hazard)}</div>${riskScore(r.p ?? r.lik, r.s ?? r.sev)}</div>
+      ${r.consequence ? `<div style="font-size:12px;color:var(--mut)">${esc(r.consequence)}</div>` : ''}
       <div class="rr-ctl">${esc(r.control)}</div>
+      <div style="margin-top:6px;font-size:11.5px;color:var(--mut)">المتبقي بعد الاحتياطات: ${riskScore(r.resP ?? 1, r.resS ?? (r.s ?? r.sev))}</div>
     </div>`).join('')}
   </div>`;
+}
+
+/* نموذج تقييم المخاطر — مطابق لقالب RISK ASSESSMENT (RBC-HSE-###) */
+function printRA(ra) {
+  const S = ra.sections || RA_SECTIONS_DEFAULT;
+  const row = (r, i) => {
+    const b = riskBand(r.p ?? r.lik, r.s ?? r.sev);
+    const rb = riskBand(r.resP ?? 1, r.resS ?? (r.s ?? r.sev));
+    return `<tr>
+      <td class="n">${i + 1}</td>
+      <td>${esc(ra.activity)}</td>
+      <td>${esc(r.hazard)}</td>
+      <td>${esc(r.consequence || 'Personnel injury / property damage')}</td>
+      <td class="c">${r.p ?? r.lik}</td><td class="c">${r.s ?? r.sev}</td><td class="c">${b.letter}</td>
+      <td>${esc(r.control)}</td>
+      <td class="c">${r.resP ?? 1}</td><td class="c">${r.resS ?? (r.s ?? r.sev)}</td><td class="c">${rb.letter}</td>
+      <td class="c">Y</td>
+    </tr>`;
+  };
+  $('#printRoot').innerHTML = `
+  <div class="sheet">
+    <div class="sh-head" style="grid-template-columns:1fr 1.3fr 1fr">
+      <div class="sh-party"><div class="cap">HSE DEPARTMENT</div><div class="nm">RBC</div><div class="ar">${esc(HSE.project.contractorEn)}</div></div>
+      <div class="sh-title"><div class="t">RISK ASSESSMENT</div><div class="t-ar">تقييم المخاطر</div></div>
+      <div class="sh-party"><div class="cap">Project</div><div class="nm">SCC</div><div class="ar">${esc(HSE.project.siteAr)}</div></div>
+    </div>
+    <div class="sh-meta" style="grid-template-columns:2fr 1fr 1fr 1fr">
+      <div><b>TITLE OF THE ACTIVITY:</b> ${esc(ra.activity)}</div>
+      <div><b>REF No.:</b> ${raRefNo(ra)}</div>
+      <div><b>ASSESSOR:</b> ${esc(ra.assessor || 'HSE Department')}</div>
+      <div><b>ASSESSED DATE:</b> ${fmtDate(ra.date)}</div>
+    </div>
+    <table class="sh-ck" style="font-size:8pt">
+      <tr>
+        <th style="width:20px">SN</th><th>ACTIVITY</th><th>HAZARD<br>(CAUSES)</th><th>CONSEQUENCES /<br>IMPACT</th>
+        <th style="width:22px">P</th><th style="width:22px">S</th><th style="width:28px">RISK</th>
+        <th style="width:28%">IMPLEMENTED CONTROL MEASURES</th>
+        <th style="width:22px">P</th><th style="width:22px">S</th><th style="width:28px">RES.</th>
+        <th style="width:30px">ACC.</th>
+      </tr>
+      ${ra.rows.map(row).join('')}
+    </table>
+    <table class="sh-ck" style="font-size:8.4pt">
+      <tr><th style="width:170px">Persons in danger</th><td>${esc(S.persons)}</td></tr>
+      <tr><th>Personal protective equipment</th><td>${esc(S.ppe)}</td></tr>
+      <tr><th>Information, instruction and training</th><td>${esc(S.training)}</td></tr>
+      <tr><th>Emergency procedures</th><td>${esc(S.emergency)}</td></tr>
+      <tr><th>Recording, monitoring and review</th><td>${esc(S.monitoring)}</td></tr>
+    </table>
+    <div class="sh-block" style="font-size:8.4pt">
+      <span class="bt">Risk rating (P×S):</span> 1–4 Low — quick easy controls, monitor ·
+      5–12 Medium — reduce risk with timescaled actions; work not to start until risk acceptable ·
+      15–25 High — do not commence activity until risk is reduced.
+    </div>
+    <div class="sh-signs" style="grid-template-columns:1fr 1fr 1fr">
+      <div><div class="r">Approved Project Manager</div><div class="nm">${esc(roleName('siteManager'))}</div><div class="sg"></div><div class="dt">Sign: ______________</div></div>
+      <div><div class="r">Approved HSE Manager</div><div class="nm">${esc(roleName('hseSupervisor'))}</div><div class="sg"></div><div class="dt">Sign: ______________</div></div>
+      <div><div class="r">Approved HSE Consultant</div><div class="nm">${esc(roleName('hseConsultant'))}</div><div class="sg"></div><div class="dt">Sign: ______________</div></div>
+    </div>
+    <div class="sh-foot"><span>HSE DEPARTMENT — RBC</span><span>${raRefNo(ra)} · ${fmtDate(ra.date)}</span></div>
+  </div>`;
+  window.print();
 }
 
 /* ============================================================
@@ -1499,6 +1781,80 @@ function viewTeamForm(id) {
       <button class="btn btn-green" id="emp-save">${icon('check', 15)} حفظ</button>
     </div>
   </div>`;
+}
+
+/* ============================================================
+   ملفات المشروع في Google Drive (المجلدات القديمة والمؤرشفة)
+   ============================================================ */
+let filesPath = []; // مسار التنقل [{id, name}]
+
+function viewFiles(folderId) {
+  if (!CLOUD.enabled()) {
+    return `
+    <div class="page-head"><div class="grow">
+      <div class="page-title">ملفات المشروع — Google Drive</div>
+    </div></div>
+    <div class="card card-pad">
+      <div class="empty">${icon('doc', 32)}
+        تصفح مجلدات المشروع (PTW القديمة، الأرشيف، التقييمات…) يعمل بعد تفعيل الخلفية.<br>
+        <span class="hint">فعّل backend/Code.gs ثم ضع الرابط في js/config.js — الخطوات في README.</span>
+      </div>
+    </div>`;
+  }
+
+  afterRender = async () => {
+    const box = $('#files-box');
+    try {
+      const d = await CLOUD.driveList(folderId || '');
+      // حدّث مسار التنقل
+      if (!folderId) filesPath = [{ id: d.id, name: d.name }];
+      else {
+        const i = filesPath.findIndex(x => x.id === d.id);
+        if (i > -1) filesPath = filesPath.slice(0, i + 1);
+        else filesPath.push({ id: d.id, name: d.name });
+      }
+      const crumbs = filesPath.map((c, i) =>
+        i === filesPath.length - 1
+          ? `<b>${esc(c.name)}</b>`
+          : `<a href="${i === 0 ? '#/files' : '#/files/' + c.id}" style="color:var(--blue)">${esc(c.name)}</a>`
+      ).join(' <span style="color:var(--line-2)">/</span> ');
+
+      const fmtSize = (n) => !n ? '' : n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.round(n / 1024) + ' KB';
+      const fIcon = (m) => m.includes('pdf') ? 'doc' : m.includes('sheet') || m.includes('excel') ? 'grid' : m.includes('image') ? 'qr' : 'doc';
+
+      box.innerHTML = `
+      <div class="card-pad" style="padding-bottom:8px;font-size:13px">${crumbs}</div>
+      <div class="row-list">
+        ${d.folders.map(f => `
+          <div class="row-item" onclick="location.hash='#/files/${f.id}'">
+            <div class="eq-ic" style="background:var(--amber-soft);color:var(--amber-ink)">${icon('grid', 19)}</div>
+            <div class="row-main"><div class="row-title">${esc(f.name)}</div>
+            <div class="row-meta"><span>مجلد</span><span class="mono">${fmtDate(f.updated)}</span></div></div>
+            ${icon('back', 16)}
+          </div>`).join('')}
+        ${d.files.map(f => `
+          <a class="row-item" href="${esc(f.url)}" target="_blank" rel="noopener">
+            <div class="eq-ic">${icon(fIcon(f.mime), 19)}</div>
+            <div class="row-main"><div class="row-title" dir="ltr" style="text-align:start">${esc(f.name)}</div>
+            <div class="row-meta"><span class="mono">${fmtDate(f.updated)}</span><span>${fmtSize(+f.size)}</span></div></div>
+            ${icon('back', 16)}
+          </a>`).join('')}
+        ${!d.folders.length && !d.files.length ? `<div class="empty">مجلد فارغ</div>` : ''}
+      </div>`;
+    } catch (e) {
+      box.innerHTML = `<div class="empty">تعذر تحميل الملفات — تحقق من الاتصال وأعد المحاولة</div>`;
+    }
+  };
+
+  return `
+  <div class="page-head">
+    ${folderId ? `<a class="btn btn-ghost btn-sm" href="#/files" style="padding-inline:6px">${icon('back', 18)}</a>` : ''}
+    <div class="grow">
+      <div class="page-title">ملفات المشروع — Google Drive</div>
+      <div class="page-sub">كل مجلدات وسجلات المشروع القديمة والمؤرشفة، مباشرة من درايف المشروع</div>
+    </div>
+  </div>
+  <div class="card" id="files-box"><div class="empty">جارٍ تحميل الملفات…</div></div>`;
 }
 
 /* ============================================================

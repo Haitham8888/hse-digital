@@ -84,22 +84,241 @@ const HSE = {
     { key: 'worker', ar: 'عامل تنفيذ', duty: false },
   ],
 
-  equipmentTypes: {
-    forklift: { ar: 'فوركلفت', en: 'Forklift', icon: 'truck',
-      items: ['الفرامل وفرامل اليد', 'الإضاءة والمنبه الصوتي وإنذار الرجوع', 'الشوك والسلاسل الرافعة', 'عدم وجود تسريب هيدروليكي', 'الإطارات وحالتها', 'حزام الأمان ومقعد السائق', 'رخصة المشغل سارية', 'طفاية حريق داخل المعدة'] },
-    loader: { ar: 'لودر', en: 'Loader', icon: 'truck',
-      items: ['الفرامل والتوجيه', 'الإضاءة وإنذار الرجوع', 'الدلو وأذرع الرفع', 'عدم وجود تسريب زيوت', 'الإطارات', 'حزام الأمان والكابينة (ROPS)', 'رخصة المشغل سارية', 'طفاية حريق'] },
-    dumper: { ar: 'قلاب', en: 'Dumper', icon: 'truck',
-      items: ['الفرامل', 'الإضاءة وإنذار الرجوع', 'رافعة الصندوق (الهيدروليك)', 'الإطارات', 'المرايا والرؤية', 'حزام الأمان', 'رخصة السائق سارية', 'غطاء الحمولة'] },
-    compactor: { ar: 'دكاكة', en: 'Compactor', icon: 'cog',
-      items: ['الفرامل وجهاز الاهتزاز', 'عدم وجود تسريب وقود/زيت', 'الأسطوانة وحالتها', 'إنذار الرجوع', 'واقيات الأجزاء المتحركة', 'حالة المقابض (لليدوية)', 'رخصة المشغل'] },
-    manlift: { ar: 'مانلفت', en: 'Manlift', icon: 'lift',
-      items: ['فحص السلة والبوابة', 'أحزمة الأمان ونقاط التثبيت', 'الأذرع والمفاصل الهيدروليكية', 'أزرار الطوارئ والإنزال اليدوي', 'استواء الأرضية ومساند التثبيت', 'شهادة الفحص (Third Party) سارية', 'رخصة المشغل سارية', 'تحديد منطقة العمل بالحواجز'] },
-    scaffold: { ar: 'سقالة', en: 'Scaffold', icon: 'grid',
-      items: ['بطاقة السقالة (Tag) محدثة', 'قواعد الارتكاز والألواح السفلية', 'التربيط والتدعيم (Bracing)', 'الدرابزين العلوي والأوسط', 'ألواح المشي مكتملة ومثبتة', 'سلم الصعود وبوابة الوصول', 'التثبيت بالمبنى (Ties)', 'عدم تجاوز الحمولة المسموحة'] },
-    fireExt: { ar: 'طفاية حريق', en: 'Fire Extinguisher', icon: 'flame',
-      items: ['مؤشر الضغط في المنطقة الخضراء', 'مسمار الأمان والختم سليم', 'الخرطوم والفوهة بحالة جيدة', 'جسم الطفاية خالٍ من الصدأ والتلف', 'الوزن مطابق', 'سهولة الوصول وظهور العلامة', 'ملصق الفحص الشهري محدث'] },
+  /* بنود أساس مشتركة لكل عائلة معدات — تُدمج مع بنود كل نوع */
+  eqBase: {
+    mobile: [
+      { en: 'Brakes and parking brake operational', ar: 'الفرامل وفرامل الانتظار تعمل بكفاءة' },
+      { en: 'Lights, horn and reverse alarm working', ar: 'الإضاءة والمنبه وإنذار الرجوع تعمل' },
+      { en: 'Tires / tracks in good condition', ar: 'الإطارات / الجنازير بحالة جيدة' },
+      { en: 'No hydraulic / oil / fuel leaks', ar: 'لا يوجد تسريب هيدروليك / زيت / وقود' },
+      { en: 'Mirrors, cabin glass and wipers', ar: 'المرايا وزجاج الكابينة والمساحات سليمة' },
+      { en: 'Seat belt and operator cabin (ROPS) in good condition', ar: 'حزام الأمان وكابينة المشغل (ROPS) سليمة' },
+      { en: 'Fire extinguisher available in cabin', ar: 'طفاية حريق متوفرة داخل الكابينة' },
+      { en: 'Operator license valid (SAG/Aramco equivalent)', ar: 'رخصة المشغل سارية' },
+      { en: 'Third-party inspection certificate valid', ar: 'شهادة الفحص من طرف ثالث سارية' },
+      { en: 'Monthly color code tag updated', ar: 'ملصق كود اللون الشهري محدث' },
+    ],
+    power: [
+      { en: 'Body / casing free from damage', ar: 'جسم المعدة سليم بلا كسور أو تلف' },
+      { en: 'Power cable and plug undamaged', ar: 'كابل الكهرباء والقابس بدون تلف أو وصلات مكشوفة' },
+      { en: 'All guards in place and secured', ar: 'جميع الواقيات مركبة ومثبتة' },
+      { en: 'ON/OFF switch and emergency stop working', ar: 'مفتاح التشغيل وزر الطوارئ يعملان' },
+      { en: 'No abnormal noise or vibration', ar: 'لا يوجد صوت أو اهتزاز غير طبيعي' },
+      { en: 'Monthly color code tag updated', ar: 'ملصق كود اللون الشهري محدث' },
+      { en: 'Operator trained for this tool', ar: 'المشغل مدرب على هذه المعدة' },
+    ],
+    lifting: [
+      { en: 'No cracks, deformation or corrosion', ar: 'لا توجد شقوق أو تشوه أو صدأ' },
+      { en: 'SWL clearly marked and not exceeded', ar: 'حمولة العمل الآمنة (SWL) موضحة وغير متجاوزة' },
+      { en: 'Third-party certificate valid', ar: 'شهادة الفحص من طرف ثالث سارية' },
+      { en: 'Monthly color code tag updated', ar: 'ملصق كود اللون الشهري محدث' },
+    ],
   },
+
+  /* كتالوج المعدات — نموذج مستقل لكل نوع (مطابق لملفات مجلد Checklists في Drive) */
+  equipmentTypes: {
+    loader: { ar: 'لودر', en: 'Loader', icon: 'truck', family: 'mobile', extra: [
+      { en: 'Bucket, boom arms and pins in good condition', ar: 'الدلو وأذرع الرفع والمسامير بحالة جيدة' },
+      { en: 'Steering system operational', ar: 'نظام التوجيه يعمل بكفاءة' } ] },
+    excavator: { ar: 'حفارة', en: 'Excavator', icon: 'truck', family: 'mobile', extra: [
+      { en: 'Boom, arm, bucket and teeth condition', ar: 'الذراع والبوم والدلو والأسنان بحالة جيدة' },
+      { en: 'Slew ring and swing operation smooth', ar: 'حلقة الدوران وحركة الالتفاف سلسة' },
+      { en: 'Quick coupler locking pin secured', ar: 'قفل الوصلة السريعة مؤمَّن' } ] },
+    bobcat: { ar: 'بوبكات', en: 'Bobcat (Skid Steer)', icon: 'truck', family: 'mobile', extra: [
+      { en: 'Attachment locking pins engaged', ar: 'مسامير تثبيت الملحقات مقفلة' },
+      { en: 'Lift arms and safety lock', ar: 'أذرع الرفع وقفل الأمان' } ] },
+    jcb: { ar: 'جي سي بي (حفار لودر)', en: 'JCB (Backhoe Loader)', icon: 'truck', family: 'mobile', extra: [
+      { en: 'Front bucket and rear backhoe condition', ar: 'الدلو الأمامي والحفار الخلفي بحالة جيدة' },
+      { en: 'Stabilizer legs operational', ar: 'أرجل التثبيت تعمل' } ] },
+    grader: { ar: 'قريدر', en: 'Grader', icon: 'truck', family: 'mobile', extra: [
+      { en: 'Blade and circle drive condition', ar: 'الشفرة ومحرك الدوران بحالة جيدة' } ] },
+    dumper: { ar: 'قلاب', en: 'Dumper', icon: 'truck', family: 'mobile', extra: [
+      { en: 'Tipping body and hydraulic hoist', ar: 'صندوق القلب والرافع الهيدروليكي سليم' },
+      { en: 'Load properly covered / secured', ar: 'الحمولة مغطاة ومؤمنة' } ] },
+    trailer: { ar: 'تريلة', en: 'Trailer', icon: 'truck', family: 'mobile', extra: [
+      { en: 'Kingpin / hitch and landing gear', ar: 'وصلة القطر وأرجل الارتكاز سليمة' },
+      { en: 'Load binders and lashing points', ar: 'أربطة تثبيت الحمولة ونقاط الربط' } ] },
+    waterTanker: { ar: 'وايت ماء', en: 'Water Tanker', icon: 'truck', family: 'mobile', extra: [
+      { en: 'Tank mounting and valves — no leaks', ar: 'تثبيت الخزان والمحابس بدون تسريب' } ] },
+    dieselTanker: { ar: 'وايت ديزل', en: 'Diesel Tanker', icon: 'truck', family: 'mobile', extra: [
+      { en: 'Bonding/earthing cable and spill kit available', ar: 'كابل التأريض وعدة الانسكابات متوفرة' },
+      { en: 'Hazard placards and fire extinguishers (2)', ar: 'لوحات الخطورة وطفايتا حريق' } ] },
+    transitMixer: { ar: 'خلاطة ناقلة', en: 'Transit Mixer', icon: 'truck', family: 'mobile', extra: [
+      { en: 'Drum, chute and ladder condition', ar: 'الحلة والمزلق وسلم الصعود بحالة جيدة' } ] },
+    towerCrane: { ar: 'كرين برجي', en: 'Tower Crane', icon: 'lift', family: 'mobile', extra: [
+      { en: 'Load moment indicator (LMI) functional', ar: 'مؤشر عزم الحمولة (LMI) يعمل' },
+      { en: 'Hoist ropes and hook safety latch', ar: 'حبال الرفع ولسان أمان الخطاف' },
+      { en: 'Limit switches operational', ar: 'مفاتيح الحد تعمل' },
+      { en: 'Certified operator and rigger available', ar: 'مشغل ورقّاص معتمدان' } ] },
+    mobileCrane: { ar: 'كرين متحرك', en: 'Mobile Crane', icon: 'lift', family: 'mobile', extra: [
+      { en: 'Outriggers fully extended with mats', ar: 'المساند ممدودة بالكامل مع ألواح ارتكاز' },
+      { en: 'Load chart available, LMI functional', ar: 'جدول الأحمال متوفر وLMI يعمل' },
+      { en: 'Hook block and safety latch', ar: 'بكرة الخطاف ولسان الأمان سليمة' },
+      { en: 'Boom sections and wire ropes condition', ar: 'أجزاء الذراع وحبال السلك بحالة جيدة' } ] },
+    hydra: { ar: 'كرين هيدرا', en: 'Hydra Crane', icon: 'lift', family: 'mobile', extra: [
+      { en: 'Boom, hook and safety latch condition', ar: 'الذراع والخطاف ولسان الأمان سليمة' },
+      { en: 'Load chart displayed in cabin', ar: 'جدول الأحمال معروض في الكابينة' } ] },
+    forklift: { ar: 'فوركلفت', en: 'Forklift', icon: 'truck', family: 'mobile', extra: [
+      { en: 'Forks, carriage and mast chains', ar: 'الشوك والحامل وسلاسل الصاري سليمة' },
+      { en: 'Overhead guard in place', ar: 'مظلة الحماية العلوية مركبة' } ] },
+    /* مانلفت والمقص: البنود الـ12 الحرفية من نموذج Drive المعتمد */
+    manlift: { ar: 'مانلفت', en: 'Manlift', icon: 'lift', family: null, extra: [
+      { en: 'Wheels, tires & axles – condition/inflation; Hydraulic components – condition/leaks', ar: 'العجلات والإطارات والمحاور — الحالة والنفخ؛ ومكونات الهيدروليك — الحالة والتسريب' },
+      { en: 'Engine – fluids/filters/belts/hoses', ar: 'المحرك — السوائل والفلاتر والسيور والخراطيم' },
+      { en: 'Fuel tank/level & Hydraulic oil level', ar: 'خزان الوقود ومستواه ومستوى زيت الهيدروليك' },
+      { en: 'Lights & strobes; Placards/labels/decals', ar: 'الإضاءة والومّاضات؛ اللوحات والملصقات الإرشادية' },
+      { en: 'All controls – clearly marked / hold to run', ar: 'جميع أزرار التحكم موضحة وتعمل بنظام الضغط المستمر' },
+      { en: 'Batteries – clean/dry/secure/caps-cables/level', ar: 'البطاريات — نظيفة وجافة ومثبتة وبأغطيتها وكابلاتها ومستواها' },
+      { en: 'Weather-resistant storage compartment – appropriate manuals', ar: 'صندوق حفظ مقاوم للعوامل الجوية مع كتيبات التشغيل' },
+      { en: 'Front & reverse horn', ar: 'المنبه الأمامي وإنذار الرجوع' },
+      { en: 'Machine physically good & certified by competent authority', ar: 'المعدة سليمة ومعتمدة من جهة فحص مختصة' },
+      { en: 'Fire extinguisher in operator cabin', ar: 'طفاية حريق في كابينة المشغل' },
+      { en: 'First aid box in operator cabin', ar: 'صندوق إسعافات أولية في الكابينة' },
+      { en: 'Operator has valid and suitable license', ar: 'المشغل يحمل رخصة سارية ومناسبة' } ] },
+    scissorLift: { ar: 'مقص هيدروليكي', en: 'Scissor Lift', icon: 'lift', family: null, extra: 'SAME:manlift' },
+    breaker: { ar: 'بريكر (كسارة)', en: 'Breaker', icon: 'cog', family: 'mobile', extra: [
+      { en: 'Breaker attachment pins and hoses', ar: 'مسامير وخراطيم ملحق التكسير سليمة' } ] },
+    compactor: { ar: 'دكاكة', en: 'Compactor (Roller)', icon: 'cog', family: 'mobile', extra: [
+      { en: 'Drum condition and vibration system', ar: 'الأسطوانة ونظام الاهتزاز بحالة جيدة' } ] },
+    /* الدكاكة اليدوية: البنود الـ16 الحرفية من نموذج Drive */
+    smallCompactor: { ar: 'دكاكة يدوية', en: 'Small Compactor', icon: 'cog', family: null, extra: [
+      { en: 'Check the external frame for any damage or cracks', ar: 'فحص الهيكل الخارجي من أي تلف أو شقوق' },
+      { en: 'Ensure all bolts and screws are properly tightened', ar: 'التأكد من إحكام ربط جميع المسامير والبراغي' },
+      { en: 'Clean the machine from accumulated dust and oil', ar: 'تنظيف المكينة من الغبار والزيوت المتراكمة' },
+      { en: 'Check engine oil level', ar: 'فحص مستوى زيت المحرك' },
+      { en: 'Check air filter condition', ar: 'فحص حالة فلتر الهواء' },
+      { en: 'Verify fuel level', ar: 'التأكد من مستوى الوقود' },
+      { en: 'Ensure there are no fuel or oil leaks', ar: 'التأكد من عدم وجود تسريب وقود أو زيت' },
+      { en: 'Confirm engine sound is normal with no unusual noises', ar: 'صوت المحرك طبيعي بدون أصوات غريبة' },
+      { en: 'Start and stop functions operate smoothly', ar: 'التشغيل والإيقاف يعملان بسلاسة' },
+      { en: 'Check throttle / foot pedal moves freely', ar: 'دواسة الوقود تتحرك بحرية' },
+      { en: 'Inspect electrical wiring and connections', ar: 'فحص الأسلاك والتوصيلات الكهربائية' },
+      { en: 'Verify vibration level during operation is normal', ar: 'مستوى الاهتزاز أثناء التشغيل طبيعي' },
+      { en: 'Check for cracks or damage in the compaction plate', ar: 'فحص لوح الدك من الشقوق أو التلف' },
+      { en: 'Ensure the compaction plate is securely mounted', ar: 'لوح الدك مثبت بإحكام' },
+      { en: 'Confirm compaction performance is effective', ar: 'أداء الدك فعال وضمن المعايير' },
+      { en: 'Inspect safety features (guards, sensors)', ar: 'فحص وسائل الأمان (واقيات، حساسات)' } ] },
+    /* مكينة دق الشيتات: البنود الـ15 الحرفية من نموذج Drive */
+    sheetPiling: { ar: 'مكينة دق الشيتات', en: 'Sheet-Piling Machine', icon: 'cog', family: null, extra: [
+      { en: 'Check machine cleanliness and ensure no damage', ar: 'نظافة المكينة والتأكد من عدم وجود تلف' },
+      { en: 'Verify engine oil, coolant, and fuel levels', ar: 'فحص مستويات الزيت وسائل التبريد والوقود' },
+      { en: 'Inspect hydraulic hoses for leaks', ar: 'فحص خراطيم الهيدروليك من التسريب' },
+      { en: 'Test emergency brake and electrical systems', ar: 'اختبار فرامل الطوارئ والأنظمة الكهربائية' },
+      { en: 'Ensure the leader/mast is straight and bolts are tight', ar: 'استقامة الصاري وإحكام مسامير التثبيت' },
+      { en: 'Check cabin readiness (gauges, seat, seatbelt)', ar: 'جاهزية الكابينة (العدادات، المقعد، الحزام)' },
+      { en: 'Assess ground stability and worksite conditions', ar: 'تقييم ثبات الأرضية وظروف الموقع' },
+      { en: 'Monitor vibration, noise, and unusual movements', ar: 'مراقبة الاهتزاز والضوضاء وأي حركة غير طبيعية' },
+      { en: 'Ensure sheet piles are driven vertically and aligned', ar: 'دق الشيتات عموديًا وباستقامة' },
+      { en: 'Maintain communication with the signal man/ground crew', ar: 'التواصل المستمر مع المُشير وطاقم الأرض' },
+      { en: 'Monitor hydraulic pressure', ar: 'مراقبة ضغط الهيدروليك' },
+      { en: 'Lower the hammer/vibro to a safe resting position', ar: 'إنزال المطرقة لوضع آمن بعد العمل' },
+      { en: 'Shut down the machine and apply parking brakes', ar: 'إطفاء المكينة وتفعيل فرامل الانتظار' },
+      { en: 'Inspect for leaks or damage after work', ar: 'الفحص من التسريب أو التلف بعد العمل' },
+      { en: 'Clean the machine and record any notes', ar: 'تنظيف المكينة وتسجيل الملاحظات' } ] },
+    laserScreed: { ar: 'مكينة تسوية ليزر', en: 'Laser Screed Machine', icon: 'cog', family: 'mobile', extra: [
+      { en: 'Laser transmitter/receiver calibrated', ar: 'جهاز الليزر معاير' },
+      { en: 'Screed head and augers condition', ar: 'رأس التسوية والبريمات بحالة جيدة' } ] },
+    boomPump: { ar: 'مضخة خرسانة (بوم)', en: 'Concrete Pump (Boom Placer)', icon: 'truck', family: 'mobile', extra: [
+      { en: 'Boom sections, pipes and clamps secured', ar: 'أجزاء الذراع والمواسير والأربطة مؤمنة' },
+      { en: 'Outriggers on mats, ground stable', ar: 'المساند على ألواح والأرضية ثابتة' },
+      { en: 'End hose whip check in place', ar: 'رباط أمان الخرطوم الطرفي مركب' } ] },
+    smallPump: { ar: 'مضخة خرسانة صغيرة', en: 'Small Concrete Pump', icon: 'cog', family: 'power', extra: [
+      { en: 'Delivery pipes and couplings secured', ar: 'مواسير الضخ والوصلات مؤمنة' },
+      { en: 'Grill guard over hopper in place', ar: 'شبكة الحماية على القادوس مركبة' } ] },
+    weldingMachine: { ar: 'مكينة لحام', en: 'Welding Machine', icon: 'flame', family: 'power', extra: [
+      { en: 'Earthing / return cable connected properly', ar: 'كابل التأريض/الراجع موصول بشكل صحيح' },
+      { en: 'Welding cables and holder insulation intact', ar: 'عزل كابلات اللحام والماسك سليم' },
+      { en: 'Welding PPE available (mask, gloves, apron)', ar: 'معدات وقاية اللحام متوفرة' } ] },
+    portableGrinder: { ar: 'صاروخ (جلاخة يدوية)', en: 'Portable Grinder', icon: 'cog', family: 'power', extra: [
+      { en: 'Disc correct type, undamaged, within expiry', ar: 'القرص من النوع الصحيح وغير تالف وضمن الصلاحية' },
+      { en: 'Guard adjusted, handle fitted', ar: 'الواقي مضبوط والمقبض الجانبي مركب' },
+      { en: 'Dead-man switch (no lock-on) working', ar: 'مفتاح الأمان اللحظي يعمل (بدون تثبيت)' } ] },
+    pedestalGrinder: { ar: 'جلاخة ثابتة', en: 'Pedestal Grinder', icon: 'cog', family: 'power', extra: [
+      { en: 'Tool rest gap ≤ 3mm, eye shield fitted', ar: 'مسند الشغل ≤ 3مم وواقي العين مركب' },
+      { en: 'Wheel sound (ring test), correctly mounted', ar: 'الحجر سليم ومركب بشكل صحيح' } ] },
+    generator: { ar: 'مولد كهرباء', en: 'Diesel Generator', icon: 'cog', family: 'power', extra: [
+      { en: 'Earthing rod connected', ar: 'قضيب التأريض موصول' },
+      { en: 'ELCB / breakers functional', ar: 'قواطع الحماية (ELCB) تعمل' },
+      { en: 'Drip tray / bunding, no fuel leaks', ar: 'صينية التنقيط موجودة ولا تسريب وقود' },
+      { en: 'Exhaust directed away, canopy closed', ar: 'العادم موجه بعيدًا والغطاء مغلق' } ] },
+    airCompressor: { ar: 'ضاغط هواء', en: 'Air Compressor', icon: 'cog', family: 'power', extra: [
+      { en: 'Pressure gauge and safety valve working', ar: 'ساعة الضغط وصمام الأمان يعملان' },
+      { en: 'Hoses and whip-check connectors secured', ar: 'الخراطيم وأربطة الأمان مؤمنة' } ] },
+    concreteMixer: { ar: 'خلاطة خرسانة', en: 'Concrete Mixer', icon: 'cog', family: 'power', extra: [
+      { en: 'Drum gear and tipping mechanism', ar: 'ترس الحلة وآلية القلب سليمة' },
+      { en: 'Drive guards over belts/gears', ar: 'واقيات السيور والتروس مركبة' } ] },
+    vibrator: { ar: 'هزاز خرسانة', en: 'Concrete Vibrator', icon: 'cog', family: 'power', extra: [
+      { en: 'Poker head and flexible shaft condition', ar: 'رأس الهزاز والعمود المرن بحالة جيدة' } ] },
+    barBending: { ar: 'مكينة ثني حديد', en: 'Bar Bending Machine', icon: 'cog', family: 'power', extra: [
+      { en: 'Foot pedal / controls functional', ar: 'دواسة القدم وأزرار التحكم تعمل' },
+      { en: 'Bending rollers and pins condition', ar: 'بكرات ومسامير الثني بحالة جيدة' } ] },
+    barCutting: { ar: 'مكينة قص حديد', en: 'Bar Cutting Machine', icon: 'cog', family: 'power', extra: [
+      { en: 'Blade condition and guard in place', ar: 'الشفرة سليمة والواقي مركب' } ] },
+    drill: { ar: 'دريل', en: 'Drill Machine', icon: 'cog', family: 'power', extra: [
+      { en: 'Chuck and bits in good condition', ar: 'الظرف والريش بحالة جيدة' } ] },
+    circularSaw: { ar: 'منشار دائري', en: 'Circular Saw', icon: 'cog', family: 'power', extra: [
+      { en: 'Retractable blade guard operates freely', ar: 'واقي الشفرة المتحرك يعمل بحرية' },
+      { en: 'Riving knife fitted, blade sharp', ar: 'سكين الفلق مركب والشفرة حادة' } ] },
+    benchCutting: { ar: 'منشار طاولة', en: 'Bench Cutting Machine', icon: 'cog', family: 'power', extra: [
+      { en: 'Blade guard and push stick available', ar: 'واقي الشفرة وعصا الدفع متوفران' } ] },
+    gasCuttingSet: { ar: 'طقم قص بالغاز', en: 'Gas Cutting Set', icon: 'flame', family: 'power', extra: [
+      { en: 'Flashback arresters on both cylinders', ar: 'مانعا ارتداد اللهب على الأسطوانتين' },
+      { en: 'Hoses, gauges and torch — no leaks', ar: 'الخراطيم والساعات والشعلة بدون تسريب' },
+      { en: 'Cylinders upright, secured, capped', ar: 'الأسطوانات قائمة ومثبتة ومغطاة' } ] },
+    winch: { ar: 'ونش', en: 'Winch Machine', icon: 'lift', family: 'power', extra: [
+      { en: 'Wire rope condition, drum anchored', ar: 'حبل السلك سليم والبكرة مثبتة' },
+      { en: 'Brake and limit switch working', ar: 'الفرامل ومفتاح الحد يعملان' } ] },
+    pumpMotor: { ar: 'مضخة/موتور كهربائي', en: 'Electrical Pump-Motor', icon: 'cog', family: 'power', extra: [
+      { en: 'Connections via ELCB, no exposed wiring', ar: 'التوصيل عبر قاطع حماية وبدون أسلاك مكشوفة' } ] },
+    powerPanel: { ar: 'لوحة كهرباء', en: 'Electrical Power Panel', icon: 'cog', family: 'power', extra: [
+      { en: 'ELCB/RCD tested and functional', ar: 'قاطع التسريب الأرضي مختبر ويعمل' },
+      { en: 'Panel door closed, danger sign posted', ar: 'باب اللوحة مغلق ولوحة تحذير مثبتة' },
+      { en: 'Cable glands and covers in place', ar: 'جلود الكابلات والأغطية مركبة' } ] },
+    floorGrinder: { ar: 'مكينة جلي أرضيات', en: 'Floor Grinding Machine', icon: 'cog', family: 'power', extra: [
+      { en: 'Grinding discs secured, water feed works', ar: 'أقراص الجلي مثبتة وتغذية الماء تعمل' } ] },
+    floorPolisher: { ar: 'مكينة تلميع خرسانة', en: 'Concrete Floor Polisher', icon: 'cog', family: 'power', extra: [
+      { en: 'Polishing pads condition, splash guard', ar: 'أقراص التلميع سليمة وواقي الرذاذ مركب' } ] },
+    vacuum: { ar: 'مكينة شفط', en: 'Vacuum Cleaner Machine', icon: 'cog', family: 'power', extra: [
+      { en: 'Filter and collection tank clean', ar: 'الفلتر وخزان التجميع نظيفان' } ] },
+    chainPulley: { ar: 'سلسلة رفع (بلوك)', en: 'Chain Pulley Block', icon: 'lift', family: 'lifting', extra: [
+      { en: 'Chain links and hooks — no wear/stretch', ar: 'حلقات السلسلة والخطاطيف بدون تآكل أو استطالة' },
+      { en: 'Brake holds load, safety latches work', ar: 'الفرامل تمسك الحمل وألسنة الأمان تعمل' } ] },
+    liftingTools: { ar: 'عدد رفع (اسلنقات وشراكل)', en: 'Lifting Tools & Tackles', icon: 'lift', family: 'lifting', extra: [
+      { en: 'Slings/webbing — no cuts or fraying', ar: 'الاسلنقات بدون قطوع أو تنسيل' },
+      { en: 'Shackles with correct pins, not bent', ar: 'الشراكل بمساميرها الصحيحة وغير منحنية' } ] },
+    scaffold: { ar: 'سقالة', en: 'Scaffolding', icon: 'grid', family: null, extra: [
+      { en: 'Scaffold tag (green) valid and signed', ar: 'بطاقة السقالة (خضراء) سارية وموقعة' },
+      { en: 'Base plates / sole boards on firm ground', ar: 'قواعد الارتكاز على أرضية ثابتة' },
+      { en: 'Standards, ledgers and bracing complete', ar: 'القوائم والمدادات والتدعيم مكتملة' },
+      { en: 'Guardrails, mid-rails and toe boards', ar: 'الدرابزين العلوي والأوسط وألواح الإزاحة' },
+      { en: 'Platform fully boarded, boards secured', ar: 'منصة العمل مكتملة الألواح ومثبتة' },
+      { en: 'Safe ladder access with gate', ar: 'سلم وصول آمن مع بوابة' },
+      { en: 'Tied to structure as per design', ar: 'مربوطة بالمنشأ حسب التصميم' },
+      { en: 'Not overloaded, materials stacked safely', ar: 'غير محملة فوق طاقتها والمواد مرتبة' },
+      { en: 'Weekly inspection recorded', ar: 'الفحص الأسبوعي مسجل' } ] },
+    fireExt: { ar: 'طفاية حريق', en: 'Fire Extinguisher', icon: 'flame', family: null, extra: [
+      { en: 'Pressure gauge in green zone', ar: 'مؤشر الضغط في المنطقة الخضراء' },
+      { en: 'Safety pin and tamper seal intact', ar: 'مسمار الأمان والختم سليمان' },
+      { en: 'Hose and nozzle unobstructed', ar: 'الخرطوم والفوهة بحالة جيدة وغير مسدودة' },
+      { en: 'Body free from rust/damage', ar: 'الجسم خالٍ من الصدأ والتلف' },
+      { en: 'Weight/charge as per specification', ar: 'الوزن/الشحنة مطابقة للمواصفة' },
+      { en: 'Accessible, visible, signage posted', ar: 'سهلة الوصول وظاهرة مع لوحة دلالة' },
+      { en: 'Monthly inspection sticker updated', ar: 'ملصق الفحص الشهري محدث' } ] },
+    confinedSpace: { ar: 'مكان محصور', en: 'Confined Space', icon: 'alert', family: null, extra: [
+      { en: 'Entry permit issued and valid', ar: 'تصريح دخول صادر وساري' },
+      { en: 'Gas test done (O2, LEL, H2S, CO)', ar: 'قياس الغازات تم (أكسجين، غازات قابلة للاشتعال، سامة)' },
+      { en: 'Continuous ventilation provided', ar: 'تهوية مستمرة متوفرة' },
+      { en: 'Stand-by man present with communication', ar: 'مراقب خارجي متواجد مع وسيلة اتصال' },
+      { en: 'Rescue plan and equipment (tripod) ready', ar: 'خطة إنقاذ ومعداتها (ترايبود) جاهزة' },
+      { en: 'Energy sources isolated (LOTO)', ar: 'مصادر الطاقة معزولة (LOTO)' },
+      { en: 'Lighting 24V / intrinsically safe', ar: 'الإضاءة 24 فولت / آمنة جوهريًا' } ] },
+  },
+
+  ownership: [
+    { key: 'own', en: 'Own', ar: 'ملك' },
+    { key: 'hired', en: 'Hired', ar: 'مستأجرة' },
+    { key: 'contractor', en: 'Contractor', ar: 'مقاول من الباطن' },
+  ],
 
   // كود اللون الشهري (ملصق الفحص)
   monthColors: [
@@ -225,6 +444,27 @@ function withEmail_(list) {
   return list.map(e => ({ email: '', ...e }));
 }
 
+/* تحويل صف من مكتبة المخاطر إلى صف تقييم بأعمدة النموذج المعتمد */
+function raRowFromLib(r) {
+  return {
+    hazard: r.hazard, risks: '', consequence: '',
+    control: r.control, p: r.lik, s: r.sev, resP: 1, resS: r.sev,
+  };
+}
+
+/* تركيب بنود كل نموذج معدة: بنود العائلة + البنود الخاصة (أو نسخ نموذج آخر) */
+(function buildEquipmentItems() {
+  const T = HSE.equipmentTypes;
+  Object.keys(T).forEach(k => {
+    const t = T[k];
+    if (typeof t.extra === 'string' && t.extra.indexOf('SAME:') === 0) {
+      t.items = T[t.extra.slice(5)].extra.slice();
+      return;
+    }
+    t.items = [...(HSE.eqBase[t.family] || []), ...(t.extra || [])];
+  });
+})();
+
 function hseSeed() {
   const now = new Date();
   const d = (offsetDays, h = 7, m = 0) => {
@@ -346,51 +586,51 @@ function hseSeed() {
   const equipment = [
     { id: 'eq1', code: 'EQ-001', type: 'forklift', model: 'Toyota 8FD45', plate: '7841 TKD', location: 'B02 — منطقة التفريغ',
       inspections: [
-        { id: 'i1', date: day(-9), by: 'Mohammed Naveed', result: 'pass', notes: '', items: [1,1,1,1,1,1,1,1] },
-        { id: 'i0', date: day(-40), by: 'Mohammed Naveed', result: 'pass', notes: '', items: [1,1,1,1,1,1,1,1] },
+        { id: 'i1', date: day(-9), by: 'Mohammed Naveed', result: 'fit', notes: '', items: [1,1,1,1,1,1,1,1] },
+        { id: 'i0', date: day(-40), by: 'Mohammed Naveed', result: 'fit', notes: '', items: [1,1,1,1,1,1,1,1] },
       ] },
     { id: 'eq2', code: 'EQ-002', type: 'loader', model: 'CAT 950GC', plate: '5512 HSA', location: 'B02',
       inspections: [
-        { id: 'i2', date: day(-4), by: 'Khalid Rehman', result: 'pass', notes: '', items: [1,1,1,1,1,1,1,1] },
+        { id: 'i2', date: day(-4), by: 'Khalid Rehman', result: 'fit', notes: '', items: [1,1,1,1,1,1,1,1] },
       ] },
     { id: 'eq3', code: 'EQ-003', type: 'dumper', model: 'Mercedes Actros', plate: '9034 RBD', location: 'B09',
       inspections: [
-        { id: 'i3', date: day(-38), by: 'Mohammed Naveed', result: 'pass', notes: 'يُعاد الفحص الشهري', items: [1,1,1,1,1,1,1,1] },
+        { id: 'i3', date: day(-38), by: 'Mohammed Naveed', result: 'fit', notes: 'يُعاد الفحص الشهري', items: [1,1,1,1,1,1,1,1] },
       ] },
     { id: 'eq4', code: 'EQ-004', type: 'compactor', model: 'Bomag BW211', plate: '—', location: 'B09',
       inspections: [
-        { id: 'i4', date: day(-2), by: 'Khalid Rehman', result: 'fail', notes: 'تسريب زيت هيدروليك من الجهة اليسرى — أوقفت عن العمل لحين الإصلاح.', items: [1,2,1,1,1,1,1] },
+        { id: 'i4', date: day(-2), by: 'Khalid Rehman', result: 'unfit', notes: 'تسريب زيت هيدروليك من الجهة اليسرى — أوقفت عن العمل لحين الإصلاح.', items: [1,2,1,1,1,1,1] },
       ] },
     { id: 'eq5', code: 'EQ-005', type: 'manlift', model: 'JLG 450AJ', plate: '—', location: 'B01',
       inspections: [
-        { id: 'i5', date: day(-6), by: 'Mohammed Naveed', result: 'pass', notes: '', items: [1,1,1,1,1,1,1,1] },
+        { id: 'i5', date: day(-6), by: 'Mohammed Naveed', result: 'fit', notes: '', items: [1,1,1,1,1,1,1,1] },
       ] },
     { id: 'eq6', code: 'EQ-006', type: 'scaffold', model: 'Cuplock — واجهة شمالية', plate: '—', location: 'B02',
       inspections: [
-        { id: 'i6', date: day(-5), by: 'Khalid Rehman', result: 'pass', notes: '', items: [1,1,1,1,1,1,1,1] },
+        { id: 'i6', date: day(-5), by: 'Khalid Rehman', result: 'fit', notes: '', items: [1,1,1,1,1,1,1,1] },
       ] },
     { id: 'eq7', code: 'EQ-007', type: 'fireExt', model: 'DCP 6kg', plate: 'FE-B02-12', location: 'B02 — البوابة الرئيسية',
       inspections: [
-        { id: 'i7', date: day(-33), by: 'Mohammed Naveed', result: 'pass', notes: '', items: [1,1,1,1,1,1,1] },
+        { id: 'i7', date: day(-33), by: 'Mohammed Naveed', result: 'fit', notes: '', items: [1,1,1,1,1,1,1] },
       ] },
   ];
 
   const assessments = [
     {
-      id: 'ra11', seq: 11, activity: 'أعمال الردم والدك في المبنى B02', location: 'B02', date: day(-3),
-      by: HSE.creator.name,
-      rows: HSE.riskLibrary[0].rows.map(r => ({ ...r })),
+      id: 'ra11', seq: 11, refNo: 'RBC-HSE-011', activity: 'أعمال الردم والدك في المبنى B02', location: 'B02',
+      assessor: 'HSE Department', date: day(-3), by: HSE.creator.name,
+      rows: HSE.riskLibrary[0].rows.map(raRowFromLib),
     },
     {
-      id: 'ra12', seq: 12, activity: 'قص وجلخ زوائد الحديد في B01', location: 'B01', date: day(0),
-      by: HSE.creator.name,
-      rows: HSE.riskLibrary[2].rows.map(r => ({ ...r })),
+      id: 'ra12', seq: 12, refNo: 'RBC-HSE-012', activity: 'قص وجلخ زوائد الحديد في B01', location: 'B01',
+      assessor: 'HSE Department', date: day(0), by: HSE.creator.name,
+      rows: HSE.riskLibrary[2].rows.map(raRowFromLib),
     },
   ];
 
   return {
     v: 3,
-    counters: { G: 845, H: 216, RA: 13, INS: 20, EMP: 13 },
+    counters: { G: 845, H: 216, RA: 54, INS: 20, EMP: 13 },
     currentRole: 'creator',
     savedSignatures: {},
     settings: {},

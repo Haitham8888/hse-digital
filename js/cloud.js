@@ -154,6 +154,17 @@ const CLOUD = {
     return r.url;
   },
 
+  /* ---------- تصفح ملفات Drive ---------- */
+  _driveCache: {},
+  async driveList(folderId) {
+    const key = folderId || 'root';
+    const c = this._driveCache[key];
+    if (c && Date.now() - c.t < 300000) return c.d;
+    const d = await this.api({ action: 'driveList', folderId: folderId || '' }, 30000);
+    this._driveCache[key] = { t: Date.now(), d };
+    return d;
+  },
+
   /* ---------- سحب دوري ---------- */
   startPolling() {
     if (!this.enabled()) return;

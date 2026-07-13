@@ -16,7 +16,7 @@
  * 5) انسخ رابط الـ Web app وضعه في js/config.js في الموقع
  */
 
-const FOLDER_ID = 'PUT_YOUR_DRIVE_FOLDER_ID_HERE'; // ← معرّف مجلد المشروع
+const FOLDER_ID = '1N7oKI45DewuaRf8uJRtqYOUYeb2UJV7p'; // مجلد «عمل» — ملفات مشروع SCC
 const SS_NAME = 'HSE Digital — Database';
 const ARCHIVE_FOLDER = 'HSE Archive (PDF)';
 
@@ -47,7 +47,7 @@ function setup() {
 }
 
 function projectFolder_() {
-  if (!FOLDER_ID || FOLDER_ID === 'PUT_YOUR_DRIVE_FOLDER_ID_HERE') {
+  if (!FOLDER_ID) {
     // بدون معرّف: أنشئ/استخدم مجلد "HSE Digital" في جذر Drive
     const it = DriveApp.getFoldersByName('HSE Digital');
     return it.hasNext() ? it.next() : DriveApp.createFolder('HSE Digital');
@@ -87,7 +87,7 @@ function database_() {
   if (!cs) {
     cs = ss.insertSheet('Counters');
     cs.appendRow(['type', 'next']);
-    [['G', 845], ['H', 216], ['RA', 13]].forEach(function (r) { cs.appendRow(r); });
+    [['G', 845], ['H', 216], ['RA', 54]].forEach(function (r) { cs.appendRow(r); });
     cs.setFrozenRows(1);
   }
   let st = ss.getSheetByName('Settings');
@@ -129,6 +129,7 @@ function doPost(e) {
       case 'upsert': return json_(upsert_(req.entity, req.data));
       case 'nextSeq': return json_(nextSeq_(req.type));
       case 'archive': return json_(archive_(req.code, req.html, req.permitId));
+      case 'driveList': return json_(driveList_(req.folderId));
       default: return json_({ error: 'unknown_action' });
     }
   } catch (err) {
@@ -295,6 +296,32 @@ function archive_(code, html, permitId) {
   const file = folder.createFile(pdf);
   file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
   return { ok: true, url: file.getUrl(), fileId: file.getId() };
+}
+
+/* ---------------- تصفح ملفات المشروع في Drive ---------------- */
+
+function driveList_(folderId) {
+  const folder = folderId ? DriveApp.getFolderById(folderId) : projectFolder_();
+  const out = { ok: true, id: folder.getId(), name: folder.getName(), folders: [], files: [] };
+  const fit = folder.getFolders();
+  while (fit.hasNext()) {
+    const f = fit.next();
+    out.folders.push({ id: f.getId(), name: f.getName(), updated: f.getLastUpdated().toISOString() });
+  }
+  const it = folder.getFiles();
+  let count = 0;
+  while (it.hasNext() && count < 200) {
+    const f = it.next();
+    out.files.push({
+      id: f.getId(), name: f.getName(), mime: f.getMimeType(),
+      size: f.getSize(), updated: f.getLastUpdated().toISOString(),
+      url: f.getUrl(),
+    });
+    count++;
+  }
+  out.folders.sort(function (a, b) { return a.name.localeCompare(b.name); });
+  out.files.sort(function (a, b) { return b.updated.localeCompare(a.updated); });
+  return out;
 }
 
 /* ---------------- الإشعارات بالبريد ---------------- */
