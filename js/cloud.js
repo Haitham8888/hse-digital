@@ -44,11 +44,11 @@ const CLOUD = {
     try {
       let server = await this.api({ action: 'pull' }, 15000);
       if (!server.employees || !server.employees.length) {
-        // قاعدة فارغة (أول تشغيل): ازرعها ببيانات هذا الجهاز
+        // قاعدة فارغة (أول تشغيل): ازرع الموظفين والعدادات فقط —
+        // السجل الرسمي (تصاريح/فحوصات/تقييمات) يبدأ نظيفًا بلا بيانات تجريبية
         server = await this.api({
           action: 'bootstrap',
-          employees: DB.employees, permits: DB.permits,
-          equipment: DB.equipment, assessments: DB.assessments,
+          employees: DB.employees,
           counters: DB.counters,
         }, 30000);
       }
@@ -62,17 +62,13 @@ const CLOUD = {
     }
   },
 
-  // دمج حالة الخادم محليًا (الخادم يغلب إلا ما ينتظر رفعه في الطابور)
+  // الخادم هو مصدر الحقيقة — لا يبقى محليًا إلا ما ينتظر رفعه في الطابور
   applyServer(server) {
     const queued = new Set(this.queue().map(q => q.entity + ':' + q.id));
     ['employees', 'permits', 'equipment', 'assessments'].forEach(k => {
-      const local = DB[k] || [];
-      const byId = new Map(local.map(o => [String(o.id), o]));
-      (server[k] || []).forEach(so => {
-        const lo = byId.get(String(so.id));
-        if (!lo) { byId.set(String(so.id), so); return; }
-        if (queued.has(k + ':' + so.id)) return; // تعديل محلي بانتظار الرفع
-        if (String(so.updatedAt || '') >= String(lo.updatedAt || '')) byId.set(String(so.id), so);
+      const byId = new Map((server[k] || []).map(o => [String(o.id), o]));
+      (DB[k] || []).forEach(lo => {
+        if (queued.has(k + ':' + lo.id)) byId.set(String(lo.id), lo);
       });
       DB[k] = [...byId.values()];
     });
