@@ -8,6 +8,13 @@
 
 'use strict';
 
+// كل الكيانات المتزامنة مع الخادم (الأساسية + السجلات العشرة)
+const CLOUD_ENTITIES = [
+  'employees', 'permits', 'equipment', 'assessments',
+  'incidents', 'violations', 'nearmiss', 'observations', 'tbts',
+  'audits', 'ncrs', 'liftings', 'requests', 'weathers',
+];
+
 const CLOUD = {
   url: ((window.HSE_CONFIG && window.HSE_CONFIG.backendUrl) || '').trim(),
   state: 'off',          // off | syncing | ok | offline
@@ -65,7 +72,7 @@ const CLOUD = {
   // الخادم هو مصدر الحقيقة — لا يبقى محليًا إلا ما ينتظر رفعه في الطابور
   applyServer(server) {
     const queued = new Set(this.queue().map(q => q.entity + ':' + q.id));
-    ['employees', 'permits', 'equipment', 'assessments'].forEach(k => {
+    CLOUD_ENTITIES.forEach(k => {
       const byId = new Map((server[k] || []).map(o => [String(o.id), o]));
       (DB[k] || []).forEach(lo => {
         if (queued.has(k + ':' + lo.id)) byId.set(String(lo.id), lo);
@@ -174,7 +181,7 @@ const CLOUD = {
 
   // بصمة خفيفة للحالة — لإعادة الرسم فقط عند تغير فعلي (بلا وميض)
   _stamp() {
-    return ['permits', 'equipment', 'assessments', 'employees'].map(k => {
+    return CLOUD_ENTITIES.map(k => {
       const list = DB[k] || [];
       let max = '';
       for (const o of list) if (String(o.updatedAt || '') > max) max = String(o.updatedAt || '');
@@ -196,7 +203,8 @@ const CLOUD = {
       // لا نقاطع نموذج إدخال مفتوحًا أو لوحة توقيع
       const h = location.hash || '#/';
       const editing = h === '#/permits/new' || h === '#/risk/new' ||
-        h.endsWith('/inspect') || h.startsWith('#/team/') || h === '#/equipment/new';
+        h.endsWith('/inspect') || h.startsWith('#/team/') || h === '#/equipment/new' ||
+        (h.startsWith('#/reg/') && h.endsWith('/new'));
       if (!editing && !document.querySelector('.modal-back')) render();
       if ((DB.permits || []).length > permitsBefore) toast('وصل تصريح جديد من الفريق');
     } catch (e) { /* السحب الدوري صامت */ }

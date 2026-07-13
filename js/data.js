@@ -685,12 +685,18 @@ function hseSeed() {
   ];
 
   return {
-    v: 7,
-    counters: { G: 845, H: 216, RA: 54, INS: 20, EMP: 34 },
+    v: 8,
+    counters: {
+      G: 845, H: 216, RA: 54, INS: 20, EMP: 34,
+      INC: 15, VIO: 27, NM: 6, SOR: 12, SSA: 9, NCR: 45,
+      REQ: 90, TBT: 1, TRN: 2, MTG: 1, WX: 3, LP: 2,
+    },
     currentRole: 'creator',
     savedSignatures: {},
     settings: {},
     employees: seedEmployees(),
     permits, equipment, assessments,
+    incidents: [], violations: [], nearmiss: [], observations: [], tbts: [],
+    audits: [], ncrs: [], liftings: [], requests: [], weathers: [],
   };
 }

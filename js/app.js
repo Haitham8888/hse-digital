@@ -80,6 +80,19 @@ function migrateDB() {
     if (dup && dup.active) { dup.active = false; push.push('e16'); }
   }
   if (DB.v < 7) DB.v = 7;
+  if (DB.v < 8) {
+    // سجلات المنصة الكاملة (حوادث/مخالفات/ملاحظات/توعية/تدقيق/رفع/طلبات/طقس)
+    ['incidents', 'violations', 'nearmiss', 'observations', 'tbts',
+      'audits', 'ncrs', 'liftings', 'requests', 'weathers'].forEach(k => {
+      if (!Array.isArray(DB[k])) DB[k] = [];
+    });
+    // استكمال الترقيم الفعلي من سجلات المشروع الورقية
+    const base = { INC: 15, VIO: 27, NM: 6, SOR: 12, SSA: 9, NCR: 45, REQ: 90, TBT: 1, TRN: 2, MTG: 1, WX: 3, LP: 2 };
+    Object.keys(base).forEach(k => {
+      if ((DB.counters[k] || 0) < base[k]) DB.counters[k] = base[k];
+    });
+    DB.v = 8;
+  }
   saveDB();
 }
 
@@ -188,6 +201,15 @@ const I18N = {
   checklist: ['التشيك لست', 'Checklist'],
   addItem: ['إضافة بند', 'Add item'],
   search: ['بحث… (كود / وصف / مبنى)', 'Search… (code / description)'],
+  registers: ['السجلات', 'Registers'],
+  tabRegs: ['السجلات', 'Registers'],
+  regsSub: ['كل نماذج ووثائق السلامة الميدانية', 'All field HSE forms & records'],
+  board: ['اللوحة الإحصائية', 'HSE Statistics Board'],
+  docs: ['مكتبة الوثائق', 'Document Library'],
+  newRecord: ['سجل جديد', 'New record'],
+  closeRecord: ['إغلاق السجل', 'Close record'],
+  openItems: ['بنود مفتوحة', 'Open items'],
+  attendance: ['كشف الحضور والتواقيع', 'Attendance & signatures'],
 };
 function tr(k) {
   const e = I18N[k];
@@ -196,8 +218,8 @@ function tr(k) {
 function applyLangChrome() {
   document.documentElement.lang = LANG === 'en' ? 'en' : 'ar';
   document.documentElement.dir = LANG === 'en' ? 'ltr' : 'rtl';
-  const navMap = { dash: tr('dash'), permits: tr('permits'), equipment: tr('equipment'), risk: tr('risk'), team: tr('team'), files: tr('files'), new: tr('newPermit') };
-  const tabMap = { dash: tr('tabDash'), permits: tr('tabPermits'), equipment: tr('tabEq'), risk: tr('tabRisk'), new: tr('newBtn') };
+  const navMap = { dash: tr('dash'), permits: tr('permits'), equipment: tr('equipment'), risk: tr('risk'), registers: tr('registers'), team: tr('team'), files: tr('files'), new: tr('newPermit') };
+  const tabMap = { dash: tr('tabDash'), permits: tr('tabPermits'), equipment: tr('tabEq'), risk: tr('tabRisk'), registers: tr('tabRegs'), new: tr('newBtn') };
   $$('.side-nav .js-nav').forEach(a => setNavText(a, navMap[a.dataset.nav]));
   $$('.tab-bar .js-nav').forEach(a => setNavText(a, tabMap[a.dataset.nav]));
   const lb = $('#lang-btn');

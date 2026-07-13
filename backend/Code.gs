@@ -16,15 +16,25 @@
  * 5) انسخ رابط الـ Web app وضعه في js/config.js في الموقع
  */
 
-const FOLDER_ID = '1N7oKI45DewuaRf8uJRtqYOUYeb2UJV7p'; // مجلد «عمل» — ملفات مشروع SCC
+const FOLDER_ID = '1Ys2jEsrW9qtPo3EY2n6n9Yna6dAfs-gl'; // مساحة العمل — ملكية haitham.why
 const SS_NAME = 'HSE Digital — Database';
 const ARCHIVE_FOLDER = 'HSE Archive (PDF)';
 
 const ENTITY_SHEETS = {
-  employees:   { name: 'Employees',   cols: ['name', 'role', 'company', 'phone', 'email', 'active'] },
-  permits:     { name: 'Permits',     cols: ['code', 'type', 'building', 'status', 'dateFrom', 'descAr'] },
-  equipment:   { name: 'Equipment',   cols: ['code', 'type', 'model', 'location'] },
-  assessments: { name: 'Assessments', cols: ['activity', 'location', 'date'] },
+  employees:    { name: 'Employees',    cols: ['name', 'role', 'company', 'phone', 'email', 'active'] },
+  permits:      { name: 'Permits',      cols: ['code', 'type', 'building', 'status', 'dateFrom', 'descAr'] },
+  equipment:    { name: 'Equipment',    cols: ['code', 'type', 'model', 'location'] },
+  assessments:  { name: 'Assessments',  cols: ['activity', 'location', 'date'] },
+  incidents:    { name: 'Incidents',    cols: ['refNo', 'date', 'location', 'severity', 'itype', 'status'] },
+  violations:   { name: 'Violations',   cols: ['refNo', 'date', 'violator', 'company', 'status'] },
+  nearmiss:     { name: 'NearMiss',     cols: ['refNo', 'date', 'location', 'status'] },
+  observations: { name: 'Observations', cols: ['refNo', 'date', 'location', 'status'] },
+  tbts:         { name: 'TBT',          cols: ['refNo', 'kind', 'date', 'topic', 'location'] },
+  audits:       { name: 'Audits',       cols: ['refNo', 'dateFrom', 'dateTo', 'status'] },
+  ncrs:         { name: 'NCR',          cols: ['refNo', 'date', 'location', 'status'] },
+  liftings:     { name: 'Liftings',     cols: ['refNo', 'date', 'crane', 'status'] },
+  requests:     { name: 'Requests',     cols: ['refNo', 'date', 'item', 'status'] },
+  weathers:     { name: 'Weather',      cols: ['refNo', 'date', 'nature'] },
 };
 
 const APPROVAL_CHAIN = [
@@ -87,9 +97,16 @@ function database_() {
   if (!cs) {
     cs = ss.insertSheet('Counters');
     cs.appendRow(['type', 'next']);
-    [['G', 845], ['H', 216], ['RA', 54]].forEach(function (r) { cs.appendRow(r); });
     cs.setFrozenRows(1);
   }
+  // استكمال الترقيم الفعلي: أضف العدّادات الناقصة فقط دون المساس بالموجود
+  const seedCounters = [['G', 845], ['H', 216], ['RA', 54], ['INC', 15], ['VIO', 27], ['NM', 6],
+    ['SOR', 12], ['SSA', 9], ['NCR', 45], ['REQ', 90], ['TBT', 1], ['TRN', 2],
+    ['MTG', 1], ['WX', 3], ['LP', 2]];
+  const haveTypes = cs.getDataRange().getValues().slice(1).map(function (r) { return String(r[0]); });
+  seedCounters.forEach(function (r) {
+    if (haveTypes.indexOf(String(r[0])) === -1) cs.appendRow(r);
+  });
   let st = ss.getSheetByName('Settings');
   if (!st) {
     st = ss.insertSheet('Settings');
@@ -128,7 +145,7 @@ function doPost(e) {
       case 'bootstrap': return json_(bootstrap_(req));
       case 'upsert': return json_(upsert_(req.entity, req.data));
       case 'nextSeq': return json_(nextSeq_(req.type));
-      case 'archive': return json_(archive_(req.code, req.html, req.permitId));
+      case 'archive': return json_(archive_(req.code, req.html, req.folder));
       case 'driveList': return json_(driveList_(req.folderId));
       case 'upload': return json_(upload_(req.name, req.mime, req.data));
       default: return json_({ error: 'unknown_action' });
@@ -286,9 +303,16 @@ function nextSeq_(type) {
 
 /* ---------------- أرشفة PDF في Drive ---------------- */
 
-function archive_(code, html, permitId) {
+function archive_(code, html, folderName) {
   if (!code || !html) return { error: 'missing_data' };
-  const folder = archiveFolder_();
+  let folder;
+  if (folderName) {
+    const root = projectFolder_();
+    const it = root.getFoldersByName(folderName);
+    folder = it.hasNext() ? it.next() : root.createFolder(folderName);
+  } else {
+    folder = archiveFolder_();
+  }
   const name = code.replace(/[^\w.\-]+/g, '-') + '.pdf';
   const pdf = Utilities.newBlob(html, 'text/html', name).getAs('application/pdf').setName(name);
   // استبدل النسخة السابقة إن وجدت
