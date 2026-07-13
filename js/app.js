@@ -24,8 +24,13 @@ function migrateDB() {
     DB.employees = seedEmployees();
     DB.counters.EMP = DB.employees.length + 1;
     DB.v = 2;
-    saveDB();
   }
+  if (DB.v < 3) {
+    DB.employees.forEach(e => { if (e.email === undefined) e.email = ''; });
+    DB.settings = DB.settings || {};
+    DB.v = 3;
+  }
+  saveDB();
 }
 function saveDB() {
   try { localStorage.setItem(DB_KEY, JSON.stringify(DB)); }
@@ -570,9 +575,24 @@ function bindStep2() {
 
 function bindStep3() {
   $('#f-back3').addEventListener('click', () => { draft.step = 2; render(); });
-  $('#f-submit').addEventListener('click', () => {
+  $('#f-submit').addEventListener('click', async () => {
     const d = draft;
-    const seq = DB.counters[d.type]++;
+    const btn = $('#f-submit');
+    let seq;
+    if (CLOUD.enabled()) {
+      // الكود يُحجز مركزيًا من الخادم — لا تعارض بين المستخدمين
+      btn.disabled = true; btn.textContent = 'جارٍ إصدار الكود…';
+      try {
+        seq = await CLOUD.nextSeq(d.type);
+        DB.counters[d.type] = Math.max(DB.counters[d.type], seq + 1);
+      } catch (e) {
+        btn.disabled = false; btn.innerHTML = `${icon('send', 15)} إرسال للموافقات`;
+        toast('تعذر الاتصال بالخادم — إصدار الكود يتطلب إنترنت');
+        return;
+      }
+    } else {
+      seq = DB.counters[d.type]++;
+    }
     const p = {
       id: 'p' + Date.now().toString(36),
       type: d.type, seq, building: d.building, discipline: d.discipline,
@@ -584,9 +604,11 @@ function bindStep3() {
       rejection: null, extension: null, closeout: null,
       createdBy: HSE.creator.name, createdAt: new Date().toISOString(),
     };
+    p.code = permitCode(p);
     DB.permits.push(p); saveDB();
+    CLOUD.push('permits', p);
     draft = null;
-    toast(`تم إنشاء التصريح ${permitCode(p)}`);
+    toast(`تم إنشاء التصريح ${p.code}`);
     location.hash = '#/permit/' + p.id;
   });
 }
@@ -678,6 +700,8 @@ function viewPermitDetail(id) {
       ${canCloseout ? `<button class="btn btn-dark" id="a-close">${icon('check', 15)} إغلاق التصريح</button>` : ''}
       ${st === 'rejected' ? `<button class="btn btn-amber" id="a-reissue">${icon('copy', 15)} إعادة الإصدار بكود جديد</button>` : ''}
       <button class="btn" id="a-print">${icon('print', 15)} PDF / طباعة</button>
+      ${CLOUD.enabled() && (st === 'approved' || st === 'closed') ? `<button class="btn" id="a-archive">${icon('doc', 15)} أرشفة PDF إلى Drive</button>` : ''}
+      ${p.driveUrl ? `<a class="btn btn-ghost" href="${esc(p.driveUrl)}" target="_blank" rel="noopener">${icon('doc', 15)} النسخة المؤرشفة في Drive</a>` : ''}
       <button class="btn btn-ghost" id="a-copy">${icon('copy', 15)} نسخ الرابط</button>
     </div>
     ${myTurn ? `<div class="hint" style="margin-top:8px">أنت الآن بدور: <b>${roleAr(role)}</b> — توقيعك سيُسجَّل بالاسم والتاريخ والوقت.</div>` : ''}
@@ -693,7 +717,7 @@ function bindPermitDetail(p) {
     onDone: (dataURL) => {
       p.approvals[p.stage] = { role: DB.currentRole, name: roleName(DB.currentRole), sig: dataURL, at: new Date().toISOString() };
       p.stage++;
-      saveDB(); render();
+      saveDB(); CLOUD.push('permits', p); render();
       toast(p.stage >= HSE.chain.length ? 'اكتملت الموافقات — التصريح معتمد ✓' : 'تم التوقيع — انتقل التصريح للمعتمد التالي');
     },
   }));
@@ -702,7 +726,7 @@ function bindPermitDetail(p) {
     const note = prompt('سبب الرفض (سيظهر للمنشئ وفي السجل):');
     if (!note || !note.trim()) return;
     p.rejection = { by: roleName(DB.currentRole), role: DB.currentRole, note: note.trim(), at: new Date().toISOString() };
-    saveDB(); render();
+    saveDB(); CLOUD.push('permits', p); render();
     toast('تم تسجيل الرفض');
   });
 
@@ -723,7 +747,7 @@ function bindPermitDetail(p) {
       title: 'توقيع التمديد', name: roleName(DB.currentRole),
       onDone: (sig) => {
         p.extension = { from, to, by: roleName(DB.currentRole), sig, at: new Date().toISOString() };
-        saveDB(); render(); toast('تم تمديد التصريح');
+        saveDB(); CLOUD.push('permits', p); render(); toast('تم تمديد التصريح');
       },
     });
   });
@@ -739,13 +763,23 @@ function bindPermitDetail(p) {
           note: 'All work completed and area has been cleared.',
           by: roleName(DB.currentRole), sig, at: now.toISOString(),
         };
-        saveDB(); render(); toast('تم إغلاق التصريح وأرشفته');
+        saveDB(); CLOUD.push('permits', p); render();
+        toast('تم إغلاق التصريح');
+        archiveToDrive(p, true); // أرشفة PDF تلقائية في Drive عند الإغلاق
       },
     });
   });
 
-  on('#a-reissue', () => {
-    const seq = DB.counters[p.type]++;
+  on('#a-reissue', async () => {
+    let seq;
+    if (CLOUD.enabled()) {
+      try {
+        seq = await CLOUD.nextSeq(p.type);
+        DB.counters[p.type] = Math.max(DB.counters[p.type], seq + 1);
+      } catch (e) { toast('تعذر الاتصال بالخادم — إصدار الكود يتطلب إنترنت'); return; }
+    } else {
+      seq = DB.counters[p.type]++;
+    }
     const np = {
       ...JSON.parse(JSON.stringify(p)),
       id: 'p' + Date.now().toString(36), seq,
@@ -753,12 +787,15 @@ function bindPermitDetail(p) {
       rejection: null, extension: null, closeout: null,
       createdAt: new Date().toISOString(),
     };
+    np.code = permitCode(np);
     DB.permits.push(np); saveDB();
-    toast(`أُعيد الإصدار بالكود الجديد ${permitCode(np)}`);
+    CLOUD.push('permits', np);
+    toast(`أُعيد الإصدار بالكود الجديد ${np.code}`);
     location.hash = '#/permit/' + np.id;
   });
 
   on('#a-print', () => printPermit(p));
+  on('#a-archive', () => archiveToDrive(p, false));
   on('#a-copy', () => {
     const url = location.origin + location.pathname + '#/permit/' + p.id;
     navigator.clipboard?.writeText(url).then(() => toast('تم نسخ الرابط'));
@@ -856,7 +893,7 @@ function openSignature({ title, name, onDone }) {
 /* ============================================================
    الطباعة — النموذج الرسمي A4
    ============================================================ */
-function printPermit(p) {
+function buildPermitSheetHTML(p) {
   const t = HSE.permitTypes[p.type];
   const st = permitStatus(p);
   const ansMark = (v, want) => v === want ? '✔' : '';
@@ -864,7 +901,7 @@ function printPermit(p) {
     : st === 'rejected' ? '<div class="sh-stamp no">REJECTED</div>'
     : st === 'closed' ? '<div class="sh-stamp cl">CLOSED</div>' : '';
 
-  $('#printRoot').innerHTML = `
+  return `
   <div class="sheet">
     <div class="sh-stamp-wrap">${stamp}</div>
     <div class="sh-head">
@@ -944,7 +981,59 @@ function printPermit(p) {
       <span>${permitCode(p)}</span>
     </div>
   </div>`;
+}
+
+function printPermit(p) {
+  $('#printRoot').innerHTML = buildPermitSheetHTML(p);
   window.print();
+}
+
+/* أنماط مدمجة لملف PDF المؤرشف (محوّل HTML→PDF في الخادم) */
+const ARCHIVE_CSS = `
+body{font-family:Arial,Helvetica,sans-serif;color:#111;font-size:10pt;margin:14px}
+.sheet{width:100%;direction:ltr;line-height:1.45}
+.sh-head{display:table;width:100%;border:2px solid #111;border-collapse:collapse}
+.sh-head>div{display:table-cell;padding:6px 8px;text-align:center;border-left:1px solid #111;vertical-align:middle}
+.sh-party .cap{font-size:8pt;color:#444}.sh-party .nm{font-weight:bold}
+.sh-title .t{font-size:15pt;font-weight:bold}.sh-title .t-ar{font-size:10pt}
+.sh-code{border:2px solid #111;border-top:0;padding:4px 10px;font-weight:bold;font-family:monospace}
+.sh-code span{display:inline-block;margin-left:8px}
+.sh-meta{display:table;width:100%;border:2px solid #111;border-top:0}
+.sh-meta>div{display:table-cell;padding:4px 8px;font-size:9.5pt;border-left:1px solid #111}
+.sh-desc{border:2px solid #111;border-top:0;padding:5px 10px;font-size:9.8pt}
+.sh-desc .lbl{font-weight:bold}
+.sh-ck{border-collapse:collapse;width:100%;border:2px solid #111;border-top:0}
+.sh-ck th,.sh-ck td{border:1px solid #111;padding:3px 7px;font-size:9pt}
+.sh-ck th{background:#efefef}.sh-ck td.c{text-align:center;width:34px}.sh-ck td.n{text-align:center;width:26px}
+.sh-workers,.sh-decl,.sh-block{border:2px solid #111;border-top:0;padding:5px 10px;font-size:9.3pt}
+.sh-decl{font-size:8.8pt;color:#222}
+.sh-block .bt{font-weight:bold}
+.sh-signs{display:table;width:100%;border:2px solid #111;border-top:0}
+.sh-signs>div{display:table-cell;width:25%;padding:5px 8px;border-left:1px solid #111;vertical-align:top}
+.sh-signs .r{font-weight:bold;font-size:9pt}.sh-signs .nm{font-size:9.5pt}
+.sh-signs .sg img{height:34px}.sh-signs .dt{font-family:monospace;font-size:7.5pt;color:#333}
+.sh-signs .pending{color:#999;font-style:italic;font-size:8.5pt}
+.sh-stamp-wrap{position:relative}
+.sh-stamp{position:absolute;top:6px;right:150px;border:3px solid;border-radius:6px;padding:2px 14px;font-weight:bold;font-size:13pt}
+.sh-stamp.ok{color:#1d7a4c}.sh-stamp.no{color:#bd3a2a}.sh-stamp.cl{color:#444}
+.sh-foot{margin-top:6px;font-size:7.8pt;color:#555;font-family:monospace}
+.sh-foot span{display:inline-block;margin-left:16px}`;
+
+async function archiveToDrive(p, silent) {
+  if (!CLOUD.enabled()) { if (!silent) toast('الأرشفة تتطلب تفعيل الخلفية'); return; }
+  if (!silent) toast('جارٍ إنشاء PDF وحفظه في Drive…');
+  const html = `<!doctype html><html><head><meta charset="utf-8"><style>${ARCHIVE_CSS}</style></head><body>${buildPermitSheetHTML(p)}</body></html>`;
+  try {
+    const url = await CLOUD.archive(p, html);
+    if (url) {
+      p.driveUrl = url;
+      saveDB(); CLOUD.push('permits', p);
+      if ((location.hash || '').includes(p.id)) render();
+      toast('تمت الأرشفة في Google Drive ✓');
+    }
+  } catch (e) {
+    if (!silent) toast('تعذرت الأرشفة — أعد المحاولة لاحقًا');
+  }
 }
 
 /* ============================================================
@@ -1056,7 +1145,7 @@ function viewInspect(id) {
             date: todayISO(), by: roleName(DB.currentRole),
             result, notes: inspDraft.notes.trim(), items: [...inspDraft.items], sig,
           });
-          saveDB(); inspDraft = null;
+          saveDB(); CLOUD.push('equipment', e); inspDraft = null;
           toast(result === 'pass' ? 'الفحص سليم — المعدة جاهزة للعمل' : 'الفحص غير مجتاز — تم إيقاف المعدة');
           location.hash = '#/equipment/' + e.id;
         },
@@ -1169,17 +1258,22 @@ function viewRiskNew() {
       raDraft.rows.push({ hazard: '', control: '', sev: 3, lik: 3 });
       renderRaRows();
     });
-    $('#ra-save').addEventListener('click', () => {
+    $('#ra-save').addEventListener('click', async () => {
       if (!raDraft.activity.trim()) { toast('اكتب وصف النشاط'); return; }
       const rows = raDraft.rows.filter(r => r.hazard.trim());
       if (!rows.length) { toast('أضِف خطرًا واحدًا على الأقل'); return; }
+      let raSeq;
+      if (CLOUD.enabled()) {
+        try { raSeq = await CLOUD.nextSeq('RA'); DB.counters.RA = Math.max(DB.counters.RA, raSeq + 1); }
+        catch (e) { raSeq = DB.counters.RA++; }
+      } else { raSeq = DB.counters.RA++; }
       const ra = {
-        id: 'ra' + Date.now().toString(36), seq: DB.counters.RA++,
+        id: 'ra' + Date.now().toString(36), seq: raSeq,
         activity: raDraft.activity.trim(), location: raDraft.location,
         date: todayISO(), by: roleName(DB.currentRole) || HSE.creator.name,
         rows,
       };
-      DB.assessments.push(ra); saveDB(); raDraft = null;
+      DB.assessments.push(ra); saveDB(); CLOUD.push('assessments', ra); raDraft = null;
       toast(`تم حفظ التقييم RA-${String(ra.seq).padStart(3, '0')}`);
       location.hash = '#/risk/' + ra.id;
     });
@@ -1306,7 +1400,7 @@ function viewTeam() {
     $$('.js-emp-toggle').forEach(b => b.addEventListener('click', ev => {
       ev.stopPropagation();
       const e = DB.employees.find(x => x.id === b.dataset.id);
-      e.active = !e.active; saveDB();
+      e.active = !e.active; saveDB(); CLOUD.push('employees', e);
       buildRoleSwitcher(); render();
       toast(e.active ? `تم تفعيل ${e.name}` : `تم إيقاف ${e.name}`);
     }));
@@ -1361,11 +1455,13 @@ function viewTeamForm(id) {
         role: $('#emp-role').value,
         company: $('#emp-company').value,
         phone: $('#emp-phone').value.trim(),
+        email: $('#emp-email').value.trim(),
         active: $('#emp-active').checked,
       };
-      if (editing) Object.assign(editing, data);
-      else DB.employees.push({ id: 'e' + (DB.counters.EMP++), ...data });
-      saveDB(); buildRoleSwitcher();
+      let saved;
+      if (editing) { Object.assign(editing, data); saved = editing; }
+      else { saved = { id: 'e' + (DB.counters.EMP++), ...data }; DB.employees.push(saved); }
+      saveDB(); CLOUD.push('employees', saved); buildRoleSwitcher();
       toast(editing ? 'تم حفظ التعديلات' : `تمت إضافة ${name}`);
       location.hash = '#/team';
     });
@@ -1389,6 +1485,8 @@ function viewTeamForm(id) {
         <select id="emp-company">${HSE.companies.map(c => `<option ${c === e.company ? 'selected' : ''}>${c}</option>`).join('')}</select></div>
       <div class="field full"><label>الجوال <small>(بصيغة دولية لتنبيهات واتساب — اختياري)</small></label>
         <input type="text" id="emp-phone" value="${esc(e.phone)}" dir="ltr" placeholder="9665XXXXXXXX"></div>
+      <div class="field full"><label>البريد الإلكتروني <small>(يصله إشعار تلقائي عندما يكون الدور عليه — اختياري)</small></label>
+        <input type="text" id="emp-email" value="${esc(e.email || '')}" dir="ltr" placeholder="name@company.com"></div>
       <div class="field full">
         <label style="display:inline-flex;align-items:center;gap:8px;cursor:pointer">
           <input type="checkbox" id="emp-active" ${e.active ? 'checked' : ''}> نشط — يظهر في القوائم وسلاسل الاعتماد
@@ -1420,16 +1518,39 @@ function boot() {
   const roleSel = $('#role-select');
   buildRoleSwitcher();
   roleSel.addEventListener('change', () => {
-    DB.currentRole = roleSel.value; saveDB(); render();
+    const target = roleSel.value;
+    // حماية الأدوار برمز PIN عند تفعيل الخلفية
+    if (!CLOUD.roleUnlocked(target) && !CLOUD.unlockRole(target)) {
+      roleSel.value = DB.currentRole;
+      return;
+    }
+    DB.currentRole = target; saveDB(); render();
     toast(`تم التبديل إلى: ${roleAr(DB.currentRole)}`);
   });
 
-  $('#reset-demo').addEventListener('click', () => {
-    if (confirm('إعادة تعيين جميع البيانات التجريبية؟')) resetDB();
-  });
+  const resetBtn = $('#reset-demo');
+  if (CLOUD.enabled()) {
+    resetBtn.textContent = 'إعادة التحميل من الخادم';
+    resetBtn.addEventListener('click', () => {
+      localStorage.removeItem(DB_KEY);
+      localStorage.removeItem('hse_sync_q');
+      location.reload();
+    });
+    const note = resetBtn.parentElement;
+    if (note) note.firstChild.textContent = 'البيانات مشتركة ومتزامنة عبر قاعدة المشروع في Google Drive · ';
+  } else {
+    resetBtn.addEventListener('click', () => {
+      if (confirm('إعادة تعيين جميع البيانات التجريبية؟')) resetDB();
+    });
+  }
 
   window.addEventListener('hashchange', render);
   render();
+
+  // المزامنة السحابية في الخلفية (لا تؤخر فتح التطبيق)
+  CLOUD.indicator();
+  CLOUD.bootstrap().then(() => { buildRoleSwitcher(); render(); });
+  CLOUD.startPolling();
 }
 
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);

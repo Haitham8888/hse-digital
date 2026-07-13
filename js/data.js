@@ -205,7 +205,7 @@ const HSE = {
    ============================================================ */
 
 function seedEmployees() {
-  return [
+  return withEmail_([
     { id: 'e1', name: 'Sayed Moqeer', role: 'creator', company: 'RBC', phone: '', active: true },
     { id: 'e2', name: 'Mostafa Mukhtar', role: 'siteManager', company: 'RBC', phone: '', active: true },
     { id: 'e3', name: 'Mohammed Naveed', role: 'hseSupervisor', company: 'RBC', phone: '', active: true },
@@ -218,7 +218,11 @@ function seedEmployees() {
     { id: 'e10', name: 'Amr Mohamed', role: 'worker', company: 'RBC', phone: '', active: true },
     { id: 'e11', name: 'Mohamed Amjad', role: 'worker', company: 'RBC', phone: '', active: true },
     { id: 'e12', name: 'Rahim Khan', role: 'worker', company: 'RBC', phone: '', active: true },
-  ];
+  ]);
+}
+
+function withEmail_(list) {
+  return list.map(e => ({ email: '', ...e }));
 }
 
 function hseSeed() {
@@ -385,10 +389,11 @@ function hseSeed() {
   ];
 
   return {
-    v: 2,
+    v: 3,
     counters: { G: 845, H: 216, RA: 13, INS: 20, EMP: 13 },
     currentRole: 'creator',
     savedSignatures: {},
+    settings: {},
     employees: seedEmployees(),
     permits, equipment, assessments,
   };
