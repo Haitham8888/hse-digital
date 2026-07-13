@@ -259,7 +259,7 @@ function permitCode(p) {
 function permitStatus(p) {
   if (p.rejection) return 'rejected';
   if (p.closeout) return 'closed';
-  if (p.stage >= HSE.chain.length) return 'approved';
+  if (p.stage >= permitChain(p).length) return 'approved';
   return 'pending';
 }
 const STATUS_META = {
@@ -297,7 +297,28 @@ function ensureRolesConfig() {
     DB.employees.push(cfg);
   }
   cfg.list = cfg.list || []; cfg.overrides = cfg.overrides || {}; cfg.hidden = cfg.hidden || [];
+  if (!cfg.chain || !cfg.chain.length) cfg.chain = HSE.chain.map(c => c.key);
+  if (!cfg.buildings || !cfg.buildings.length) cfg.buildings = HSE.buildings.slice();
   return cfg;
+}
+function buildingsList() {
+  const cfg = rolesConfig();
+  return (cfg && cfg.buildings && cfg.buildings.length) ? cfg.buildings : HSE.buildings;
+}
+
+/* سلم الاعتماد الحالي (قابل للترتيب من الأدمن) */
+function chainRoles() {
+  const cfg = rolesConfig();
+  const keys = (cfg && cfg.chain && cfg.chain.length) ? cfg.chain : HSE.chain.map(c => c.key);
+  return keys.map(k => {
+    const base = HSE.chain.find(c => c.key === k);
+    const r = allTeamRoles().find(x => x.key === k);
+    return { key: k, ar: r ? r.ar : (base ? base.ar : k), en: base ? base.en : ((r && r.ar) || k) };
+  });
+}
+/* سلسلة التصريح: لقطة محفوظة داخله — القديمة تبقى على السلسلة الأصلية */
+function permitChain(p) {
+  return (p.chain && p.chain.length) ? p.chain : HSE.chain;
 }
 function allTeamRoles() {
   const ov = roleOverrides(), hid = hiddenRoles();
@@ -326,7 +347,7 @@ function roleName(key) {
 }
 function dotsHTML(p) {
   const st = permitStatus(p);
-  return `<span class="appr-dots">${HSE.chain.map((_, i) => {
+  return `<span class="appr-dots">${permitChain(p).map((_, i) => {
     if (p.rejection && i === p.stage) return '<i class="stop"></i>';
     if (i < p.stage) return '<i class="done"></i>';
     if (i === p.stage && st === 'pending') return '<i class="now"></i>';
@@ -445,7 +466,7 @@ function viewDashboard() {
   const closedWeek = ps.filter(p => p.closeout && daysSince(p.closeout.at) <= 7);
 
   const role = DB.currentRole;
-  const myTurn = pending.filter(p => HSE.chain[p.stage] && HSE.chain[p.stage].key === role);
+  const myTurn = pending.filter(p => permitChain(p)[p.stage] && permitChain(p)[p.stage].key === role);
 
   const recent = [...ps].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 5);
 
@@ -646,7 +667,7 @@ function viewPermitNew() {
             <option value="H" ${d.type === 'H' ? 'selected' : ''}>أعمال ساخنة — Hot Work (PTW.H)</option>
           </select></div>
         <div class="field"><label>المبنى / الموقع</label>
-          <select id="f-building">${HSE.buildings.map(b => `<option ${b === d.building ? 'selected' : ''}>${b}</option>`).join('')}</select></div>
+          <select id="f-building">${buildingsList().map(b => `<option ${b === d.building ? 'selected' : ''}>${b}</option>`).join('')}</select></div>
         <div class="field"><label>التخصص</label>
           <select id="f-discipline">${HSE.disciplines.map(x => `<option value="${x.en}" ${x.en === d.discipline ? 'selected' : ''}>${x.ar} — ${x.en}</option>`).join('')}</select></div>
         <div class="field"><label>المعدات المستخدمة <small>(اختياري)</small></label>
@@ -751,7 +772,7 @@ function viewPermitNew() {
     <div class="divider"></div>
     <div style="font-size:13px;font-weight:700;margin-bottom:6px">سلسلة الموافقات المطلوبة:</div>
     <div class="tl">
-      ${HSE.chain.map((c) => `<div class="tl-step"><div class="tl-node">${icon('clock', 12)}</div>
+      ${chainRoles().map((c) => `<div class="tl-step"><div class="tl-node">${icon('clock', 12)}</div>
         <div class="tl-role">${roleAr(c.key)}</div><div class="tl-name">${esc(roleName(c.key))}</div></div>`).join('')}
     </div>
     <div class="divider"></div>
@@ -893,7 +914,8 @@ function bindStep3() {
       workers: d.workers,
       dateFrom: d.dateFrom, dateTo: d.dateTo, timeFrom: d.timeFrom, timeTo: d.timeTo,
       checklist: d.checklist, items: d.items, stage: 0,
-      approvals: HSE.chain.map(() => null),
+      chain: chainRoles(),
+      approvals: chainRoles().map(() => null),
       rejection: null, extension: null, closeout: null,
       createdBy: HSE.creator.name, createdAt: new Date().toISOString(),
     };
@@ -907,13 +929,68 @@ function bindStep3() {
   });
 }
 
+/* ---------------- المرفقات: صور ومقاطع (حتى 10) ---------------- */
+const MEDIA_MAX = 10;
+function fileToDataURL(f) {
+  return new Promise(res => { const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(f); });
+}
+async function compressImage(file) {
+  const durl = await fileToDataURL(file);
+  const img = await new Promise(res => { const i = new Image(); i.onload = () => res(i); i.src = durl; });
+  const s = Math.min(1, 1280 / Math.max(img.width, img.height));
+  const c = document.createElement('canvas');
+  c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
+  c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+  return c.toDataURL('image/jpeg', 0.72);
+}
+async function addMediaFiles(files, media) {
+  for (const f of files) {
+    if (media.length >= MEDIA_MAX) { toast('الحد الأقصى 10 مرفقات'); break; }
+    if (f.type.startsWith('video')) {
+      if (!CLOUD.enabled()) { toast('رفع المقاطع يتطلب تفعيل الخلفية'); continue; }
+      if (f.size > 12 * 1024 * 1024) { toast('المقطع أكبر من 12MB — قصّه أو اضغطه'); continue; }
+      toast('جارٍ رفع المقطع…');
+      try {
+        const durl = await fileToDataURL(f);
+        const r = await CLOUD.api({ action: 'upload', name: f.name, mime: f.type, data: durl.split(',')[1] }, 240000);
+        media.push({ kind: 'video', url: r.url, id: r.id || '', name: f.name });
+      } catch (e) { toast('تعذر رفع المقطع'); }
+    } else {
+      const durl = await compressImage(f);
+      if (CLOUD.enabled()) {
+        try {
+          const r = await CLOUD.api({ action: 'upload', name: f.name.replace(/\.[^.]+$/, '') + '.jpg', mime: 'image/jpeg', data: durl.split(',')[1] }, 120000);
+          media.push({ kind: 'image', url: r.url, id: r.id || '', name: f.name });
+        } catch (e) { toast('تعذر رفع الصورة'); }
+      } else {
+        media.push({ kind: 'image', url: durl, id: '', name: f.name });
+      }
+    }
+  }
+}
+function mediaThumb(m) {
+  const src = m.id ? `https://drive.google.com/thumbnail?id=${esc(m.id)}&sz=w300` : m.url;
+  if (m.kind === 'image') {
+    return `<a href="${esc(m.url)}" target="_blank" rel="noopener"><img src="${esc(src)}" alt="" style="width:74px;height:74px;object-fit:cover;border-radius:7px;border:1px solid var(--line)"></a>`;
+  }
+  return `<a href="${esc(m.url)}" target="_blank" rel="noopener" style="width:74px;height:74px;border-radius:7px;border:1px solid var(--line);display:grid;place-items:center;background:var(--slate-soft);font-size:22px">▶</a>`;
+}
+function mediaGridHTML(media, delClass) {
+  const list = media || [];
+  if (!list.length) return '<span class="hint">لا مرفقات بعد</span>';
+  return `<div style="display:flex;flex-wrap:wrap;gap:8px">${list.map((m, i) =>
+    `<div style="position:relative">${mediaThumb(m)}${delClass ? `<button class="${delClass}" data-i="${i}" style="position:absolute;top:-6px;inset-inline-end:-6px;width:20px;height:20px;border-radius:50%;border:0;background:var(--red);color:#fff;font-size:11px;line-height:1">×</button>` : ''}</div>`
+  ).join('')}</div>`;
+}
+
 /* تنبيه واتساب للمعتمد الذي عليه الدور — يُفتح تلقائيًا بعد التوقيع/الإرسال */
 function waNotifyNext(p, preWin) {
-  if (permitStatus(p) !== 'pending' || !HSE.chain[p.stage]) {
+  const pch = permitChain(p);
+  if (permitStatus(p) !== 'pending' || !pch[p.stage]) {
     if (preWin && !preWin.closed) preWin.close();
     return;
   }
-  const c = HSE.chain[p.stage];
+  const c = pch[p.stage];
   const emp = empFor(c.key);
   const phone = emp && emp.phone ? emp.phone.replace(/[^0-9]/g, '') : '';
   const url = location.origin + location.pathname + '#/permit/' + p.id;
@@ -932,8 +1009,10 @@ function viewPermitDetail(id) {
   const t = HSE.permitTypes[p.type];
   const st = permitStatus(p);
   const role = DB.currentRole;
-  const myTurn = st === 'pending' && HSE.chain[p.stage] && HSE.chain[p.stage].key === role;
-  const canCloseout = st === 'approved' && !p.closeout && ['consultantEngineer', 'hseConsultant'].includes(role);
+  const pch = permitChain(p);
+  const myTurn = st === 'pending' && pch[p.stage] && pch[p.stage].key === role;
+  const lastKey = pch[pch.length - 1] ? pch[pch.length - 1].key : '';
+  const canCloseout = st === 'approved' && !p.closeout && (isAdmin() || role === lastKey || ['consultantEngineer', 'hseConsultant'].includes(role));
   const canExtend = st === 'approved' && !p.closeout && role !== 'creator';
   const ansCls = ['', 'yes', 'no', 'na'], ansTxt = ['—', 'YES', 'NO', 'N/A'];
 
@@ -978,7 +1057,7 @@ function viewPermitDetail(id) {
     <div class="card-head">${icon('pen', 17)} ${tr('approvals')}</div>
     <div class="card-pad">
       <div class="tl">
-        ${HSE.chain.map((c, i) => {
+        ${pch.map((c, i) => {
           const a = p.approvals[i];
           const rejectedHere = p.rejection && p.stage === i;
           const cls = a ? 'done' : rejectedHere ? 'stop' : (st === 'pending' && p.stage === i) ? 'now' : '';
@@ -1005,7 +1084,7 @@ function viewPermitDetail(id) {
         <button class="btn btn-green" id="a-sign">${icon('pen', 15)} ${tr('signApprove')}</button>
         <button class="btn btn-red-o" id="a-reject">${icon('x', 15)} ${tr('rejectNote')}</button>` : ''}
       ${st === 'pending' && !myTurn ? `
-        <button class="btn" id="a-notify">${icon('send', 15)} تنبيه ${roleAr(HSE.chain[p.stage].key)} عبر واتساب</button>` : ''}
+        <button class="btn" id="a-notify">${icon('send', 15)} تنبيه ${roleAr(pch[p.stage].key)} عبر واتساب</button>` : ''}
       ${canExtend ? `<button class="btn" id="a-extend">${icon('clock', 15)} ${tr('extend')}</button>` : ''}
       ${canCloseout ? `<button class="btn btn-dark" id="a-close">${icon('check', 15)} ${tr('closePermit')}</button>` : ''}
       ${st === 'rejected' ? `<button class="btn btn-amber" id="a-reissue">${icon('copy', 15)} إعادة الإصدار بكود جديد</button>` : ''}
@@ -1028,7 +1107,7 @@ function bindPermitDetail(p) {
       p.approvals[p.stage] = { role: DB.currentRole, name: currentUserName(), sig: dataURL, at: new Date().toISOString() };
       p.stage++;
       saveDB(); CLOUD.push('permits', p); render();
-      if (p.stage >= HSE.chain.length) {
+      if (p.stage >= permitChain(p).length) {
         toast('اكتملت الموافقات — التصريح معتمد ✓');
       } else {
         toast('تم التوقيع — جارٍ فتح واتساب لتنبيه المعتمد التالي');
@@ -1090,7 +1169,7 @@ function bindPermitDetail(p) {
     const np = {
       ...JSON.parse(JSON.stringify(p)),
       id: 'p' + Date.now().toString(36), seq,
-      stage: 0, approvals: HSE.chain.map(() => null),
+      stage: 0, chain: chainRoles(), approvals: chainRoles().map(() => null),
       rejection: null, extension: null, closeout: null,
       createdAt: new Date().toISOString(),
     };
@@ -1258,8 +1337,8 @@ function buildPermitSheetHTML(p) {
       The work permit for the above-mentioned work at the location specified is issued after personally inspecting
       the area to ensure that the precautions mentioned in the checklist have been complied with.
     </div>
-    <div class="sh-signs">
-      ${HSE.chain.map((c, i) => {
+    <div class="sh-signs" style="grid-template-columns:repeat(${permitChain(p).length}, 1fr)">
+      ${permitChain(p).map((c, i) => {
         const a = p.approvals[i];
         return `<div>
           <div class="r">${esc(c.en)}</div>
@@ -1389,6 +1468,15 @@ function viewEquipmentDetail(id) {
       ev.stopPropagation();
       printInspection(e, e.inspections[+b.dataset.idx]);
     }));
+    $('#eqd-media')?.addEventListener('change', async ev => {
+      e.media = e.media || [];
+      await addMediaFiles([...ev.target.files], e.media);
+      saveDB(); CLOUD.push('equipment', e); render();
+    });
+    $$('.js-eqdm-del').forEach(b => b.addEventListener('click', () => {
+      e.media.splice(+b.dataset.i, 1);
+      saveDB(); CLOUD.push('equipment', e); render();
+    }));
   };
 
   return `
@@ -1409,6 +1497,13 @@ function viewEquipmentDetail(id) {
       <div class="qr-code-label">${e.code}</div>
       <div class="hint">امسح الكود في الموقع → يفتح نموذج الفحص مباشرة</div>
     </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">${icon('qr', 17)} الصور والمقاطع <span class="chip">${(e.media || []).length}/10</span>
+      <span class="spacer"></span>
+      ${canCreate() ? `<label class="btn btn-sm">${icon('plus', 13)} إضافة<input type="file" id="eqd-media" accept="image/*,video/*" multiple style="display:none"></label>` : ''}</div>
+    <div class="card-pad" id="eqd-media-grid">${mediaGridHTML(e.media, canCreate() ? 'js-eqdm-del' : '')}</div>
   </div>
 
   <div class="card card-pad">
@@ -1521,9 +1616,21 @@ function viewInspect(id) {
 }
 
 /* إضافة معدة جديدة */
+let eqNewMedia = [];
 function viewEquipmentNew() {
   if (!canCreate()) return blockedCard('إضافة المعدات صلاحية مدير النظام ومنشئي التصاريح');
   afterRender = () => {
+    $('#eq-media').addEventListener('change', async ev => {
+      await addMediaFiles([...ev.target.files], eqNewMedia);
+      $('#eq-media-grid').innerHTML = mediaGridHTML(eqNewMedia, 'js-eqm-del');
+      bindEqmDel();
+    });
+    const bindEqmDel = () => $$('.js-eqm-del').forEach(b => b.addEventListener('click', () => {
+      eqNewMedia.splice(+b.dataset.i, 1);
+      $('#eq-media-grid').innerHTML = mediaGridHTML(eqNewMedia, 'js-eqm-del');
+      bindEqmDel();
+    }));
+    bindEqmDel();
     $('#eq-save').addEventListener('click', () => {
       const type = $('#eq-type').value;
       const model = $('#eq-model').value.trim();
@@ -1536,8 +1643,10 @@ function viewEquipmentNew() {
         plate: $('#eq-plate').value.trim() || '—',
         location: $('#eq-location').value.trim() || $('#eq-building').value,
         ownership: $('#eq-own').value,
+        media: eqNewMedia.slice(0, MEDIA_MAX),
         inspections: [],
       };
+      eqNewMedia = [];
       DB.equipment.push(eq); saveDB(); CLOUD.push('equipment', eq);
       toast(`تمت إضافة ${eq.code} — اطبع ملصق QR والصقه عليها`);
       location.hash = '#/equipment/' + eq.id;
@@ -1561,9 +1670,12 @@ function viewEquipmentNew() {
       <div class="field"><label>الملكية</label>
         <select id="eq-own">${HSE.ownership.map(o => `<option value="${o.key}">${o.ar} — ${o.en}</option>`).join('')}</select></div>
       <div class="field"><label>المبنى</label>
-        <select id="eq-building">${HSE.buildings.map(b => `<option>${b}</option>`).join('')}</select></div>
+        <select id="eq-building">${buildingsList().map(b => `<option>${b}</option>`).join('')}</select></div>
       <div class="field"><label>وصف الموقع <small>(اختياري)</small></label>
         <input type="text" id="eq-location" placeholder="B02 — منطقة التفريغ"></div>
+      <div class="field full"><label>صور ومقاطع للمعدة <small>(حتى 10)</small></label>
+        <input type="file" id="eq-media" accept="image/*,video/*" multiple>
+        <div id="eq-media-grid" style="margin-top:8px">${mediaGridHTML(eqNewMedia, 'js-eqm-del')}</div></div>
     </div>
     <div class="divider"></div>
     <button class="btn btn-green btn-block" id="eq-save">${icon('check', 16)} حفظ المعدة</button>
@@ -1709,7 +1821,7 @@ function viewRisk() {
 let raDraft = null;
 function viewRiskNew() {
   if (!canCreate()) return blockedCard('إنشاء تقييمات المخاطر صلاحية مدير النظام ومنشئي التصاريح');
-  if (!raDraft) raDraft = { activity: '', location: 'B02', assessor: 'HSE Department', rows: [], suggested: null };
+  if (!raDraft) raDraft = { activity: '', location: 'B02', assessor: 'HSE Department', rows: [], suggested: null, media: [] };
 
   afterRender = () => {
     const inp = $('#ra-activity');
@@ -1722,10 +1834,23 @@ function viewRiskNew() {
     });
     $('#ra-location').addEventListener('change', e => raDraft.location = e.target.value);
     $('#ra-assessor').addEventListener('input', e => raDraft.assessor = e.target.value);
-    $('#ra-add').addEventListener('click', () => {
+    $('#ra-media').addEventListener('change', async ev => {
+      await addMediaFiles([...ev.target.files], raDraft.media);
+      $('#ra-media-grid').innerHTML = mediaGridHTML(raDraft.media, 'js-ram-del');
+      bindRamDel();
+    });
+    const bindRamDel = () => $$('.js-ram-del').forEach(b => b.addEventListener('click', () => {
+      raDraft.media.splice(+b.dataset.i, 1);
+      $('#ra-media-grid').innerHTML = mediaGridHTML(raDraft.media, 'js-ram-del');
+      bindRamDel();
+    }));
+    bindRamDel();
+    const addRaRow = () => {
       raDraft.rows.push({ hazard: '', risks: '', consequence: '', control: '', p: 3, s: 3, resP: 1, resS: 3 });
       renderRaRows();
-    });
+    };
+    $('#ra-add').addEventListener('click', addRaRow);
+    $('#ra-add2').addEventListener('click', addRaRow);
     $('#ra-save').addEventListener('click', async () => {
       if (!raDraft.activity.trim()) { toast('اكتب وصف النشاط'); return; }
       const rows = raDraft.rows.filter(r => r.hazard.trim());
@@ -1742,6 +1867,7 @@ function viewRiskNew() {
         assessor: (raDraft.assessor || 'HSE Department').trim(),
         date: todayISO(), by: currentUserName() || HSE.creator.name,
         rows, sections: { ...RA_SECTIONS_DEFAULT },
+        media: (raDraft.media || []).slice(0, MEDIA_MAX),
       };
       DB.assessments.push(ra); saveDB(); CLOUD.push('assessments', ra); raDraft = null;
       toast(`تم حفظ التقييم ${ra.refNo}`);
@@ -1763,18 +1889,22 @@ function viewRiskNew() {
       <div class="field full"><label>النشاط <small>Title of the activity</small></label>
         <input type="text" id="ra-activity" value="${esc(raDraft.activity)}" placeholder="مثال: أعمال ردم ودك في المبنى B02…"></div>
       <div class="field"><label>الموقع</label>
-        <select id="ra-location">${HSE.buildings.map(b => `<option ${b === raDraft.location ? 'selected' : ''}>${b}</option>`).join('')}</select></div>
+        <select id="ra-location">${buildingsList().map(b => `<option ${b === raDraft.location ? 'selected' : ''}>${b}</option>`).join('')}</select></div>
       <div class="field"><label>المُقيِّم <small>Assessor</small></label>
         <input type="text" id="ra-assessor" value="${esc(raDraft.assessor)}" dir="ltr"></div>
+      <div class="field full"><label>صور ومقاطع من الموقع <small>(حتى 10)</small></label>
+        <input type="file" id="ra-media" accept="image/*,video/*" multiple>
+        <div id="ra-media-grid" style="margin-top:8px">${mediaGridHTML(raDraft.media, 'js-ram-del')}</div></div>
     </div>
     <div id="ra-suggest"></div>
     <div class="divider"></div>
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
       <b style="font-size:14px">المخاطر والاحتياطات</b>
       <span class="spacer" style="flex:1"></span>
-      <button class="btn btn-sm" id="ra-add">${icon('plus', 14)} إضافة يدوية</button>
+      <button class="btn btn-sm" id="ra-add">${icon('plus', 14)} إضافة خطر</button>
     </div>
     <div id="ra-rows"></div>
+    <button class="btn btn-block" id="ra-add2" style="margin-top:10px;border-style:dashed">${icon('plus', 15)} إضافة خطر جديد</button>
     <div class="divider"></div>
     <button class="btn btn-green btn-block" id="ra-save">${icon('check', 16)} حفظ التقييم</button>
   </div>`;
@@ -1859,6 +1989,8 @@ function viewRiskDetail(id) {
     </div>
     <button class="btn" id="ra-print">${icon('print', 15)} PDF / طباعة</button>
   </div>
+  ${(ra.media && ra.media.length) ? `<div class="card"><div class="card-head">الصور والمقاطع <span class="chip">${ra.media.length}</span></div>
+    <div class="card-pad">${mediaGridHTML(ra.media, '')}</div></div>` : ''}
   <div class="card card-pad">
     ${ra.rows.map((r, i) => `
     <div class="ra-row">
@@ -1978,8 +2110,11 @@ function viewTeam() {
     }));
     $$('.js-role-del').forEach(b => b.addEventListener('click', () => {
       const k = b.dataset.k;
+      if (k === 'admin') return;
       if (DB.employees.some(e => e.role === k && e.id !== '_roles')) { toast('الدور مُسند لموظفين — انقلهم لدور آخر أولًا'); return; }
       const cfg = ensureRolesConfig();
+      if (cfg.chain.includes(k) && cfg.chain.length <= 1) { toast('لا يمكن حذف آخر دور في سلم الاعتماد'); return; }
+      cfg.chain = cfg.chain.filter(x => x !== k);
       if ((cfg.list || []).some(r => r.key === k)) {
         cfg.list = cfg.list.filter(r => r.key !== k);
       } else {
@@ -1988,6 +2123,54 @@ function viewTeam() {
       saveDB(); CLOUD.push('employees', cfg); render();
       toast('حُذف الدور');
     }));
+    // ترتيب سلم الاعتماد
+    const chMove = (i, d) => {
+      const cfg = ensureRolesConfig();
+      const j = i + d;
+      if (j < 0 || j >= cfg.chain.length) return;
+      [cfg.chain[i], cfg.chain[j]] = [cfg.chain[j], cfg.chain[i]];
+      saveDB(); CLOUD.push('employees', cfg); render();
+    };
+    $$('.js-ch-up').forEach(b => b.addEventListener('click', () => chMove(+b.dataset.i, -1)));
+    $$('.js-ch-dn').forEach(b => b.addEventListener('click', () => chMove(+b.dataset.i, 1)));
+    $$('.js-ch-rm').forEach(b => b.addEventListener('click', () => {
+      const cfg = ensureRolesConfig();
+      if (cfg.chain.length <= 1) { toast('السلم يحتاج دورًا واحدًا على الأقل'); return; }
+      cfg.chain.splice(+b.dataset.i, 1);
+      saveDB(); CLOUD.push('employees', cfg); render();
+      toast('أُزيل من سلم الاعتماد');
+    }));
+    // إدارة المواقع
+    $$('.js-bld-ren').forEach(b => b.addEventListener('click', () => {
+      const cfg = ensureRolesConfig();
+      const i = +b.dataset.i;
+      const v = prompt('الاسم الجديد للموقع:', cfg.buildings[i]);
+      if (v === null || !v.trim()) return;
+      cfg.buildings[i] = v.trim();
+      saveDB(); CLOUD.push('employees', cfg); render();
+    }));
+    $$('.js-bld-del').forEach(b => b.addEventListener('click', () => {
+      const cfg = ensureRolesConfig();
+      if (cfg.buildings.length <= 1) return;
+      cfg.buildings.splice(+b.dataset.i, 1);
+      saveDB(); CLOUD.push('employees', cfg); render();
+    }));
+    $('#bld-add')?.addEventListener('click', () => {
+      const v = $('#bld-new').value.trim();
+      if (!v) return;
+      const cfg = ensureRolesConfig();
+      if (!cfg.buildings.includes(v)) cfg.buildings.push(v);
+      saveDB(); CLOUD.push('employees', cfg); render();
+      toast('أُضيف الموقع: ' + v);
+    });
+    $('#ch-add')?.addEventListener('click', () => {
+      const k = $('#ch-add-sel').value;
+      if (!k) return;
+      const cfg = ensureRolesConfig();
+      if (!cfg.chain.includes(k)) cfg.chain.push(k);
+      saveDB(); CLOUD.push('employees', cfg); render();
+      toast('أُضيف لسلم الاعتماد');
+    });
   };
 
   return `
@@ -2024,16 +2207,45 @@ function viewTeam() {
     <div class="card-head">${icon('shield', 17)} الأدوار المخصصة <span class="chip">${customRoles().length}</span></div>
     <div class="card-pad">
       ${allTeamRoles().map(r => {
-        const chainRole = HSE.chain.some(c => c.key === r.key);
-        const deletable = r.custom || ['creator', 'inspector'].includes(r.key);
+        const inChain = chainRoles().some(c => c.key === r.key);
+        const deletable = r.key !== 'admin';
         return `
       <div style="display:flex;gap:8px;align-items:center;padding:7px 0;border-bottom:1px dashed var(--line)">
         <b style="flex:1;font-size:13.5px">${esc(r.ar)}</b>
-        <span class="chip">${r.custom ? 'مخصص' : chainRole ? 'سلسلة الاعتماد' : 'أساسي'}</span>
-        <button class="btn btn-sm js-role-ren" data-k="${esc(r.key)}">تعديل الاسم</button>
+        <span class="chip">${r.custom ? 'مخصص' : inChain ? 'في سلم الاعتماد' : 'أساسي'}</span>
+        ${r.key !== 'admin' ? `<button class="btn btn-sm js-role-ren" data-k="${esc(r.key)}">تعديل الاسم</button>` : ''}
         ${deletable ? `<button class="btn btn-sm js-role-del" data-k="${esc(r.key)}" style="color:var(--red)">حذف</button>` : ''}
       </div>`;
       }).join('')}
+      <div class="divider"></div>
+      <div style="font-size:13.5px;font-weight:700;margin-bottom:6px">سلم الاعتماد — الترتيب من الأول للأخير:</div>
+      ${chainRoles().map((c, i) => `
+      <div style="display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px dashed var(--line)">
+        <span class="ck-no">${i + 1}</span>
+        <b style="flex:1;font-size:13.5px">${esc(roleAr(c.key))}</b>
+        <button class="btn btn-sm js-ch-up" data-i="${i}" ${i === 0 ? 'disabled' : ''}>↑</button>
+        <button class="btn btn-sm js-ch-dn" data-i="${i}" ${i === chainRoles().length - 1 ? 'disabled' : ''}>↓</button>
+        <button class="btn btn-sm js-ch-rm" data-i="${i}" style="color:var(--red)" ${chainRoles().length <= 1 ? 'disabled' : ''}>إزالة</button>
+      </div>`).join('')}
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <select id="ch-add-sel" style="flex:1;border:1px solid var(--line-2);border-radius:7px;padding:8px 10px">
+          ${allTeamRoles().filter(r => r.key !== 'admin' && r.key !== 'worker' && !chainRoles().some(c => c.key === r.key)).map(r => `<option value="${esc(r.key)}">${esc(r.ar)}</option>`).join('')}
+        </select>
+        <button class="btn btn-sm" id="ch-add">${icon('plus', 14)} إضافة للسلم</button>
+      </div>
+      <div class="hint" style="margin-top:8px">التصاريح الجديدة تتبع هذا السلم — والتصاريح السابقة تحتفظ بسلسلتها كما وُقعت.</div>
+      <div class="divider"></div>
+      <div style="font-size:13.5px;font-weight:700;margin-bottom:6px">المواقع / المباني:</div>
+      ${buildingsList().map((b2, i) => `
+      <div style="display:flex;gap:8px;align-items:center;padding:5px 0;border-bottom:1px dashed var(--line)">
+        <b style="flex:1;font-size:13px" class="mono">${esc(b2)}</b>
+        <button class="btn btn-sm js-bld-ren" data-i="${i}">تعديل</button>
+        <button class="btn btn-sm js-bld-del" data-i="${i}" style="color:var(--red)" ${buildingsList().length <= 1 ? 'disabled' : ''}>حذف</button>
+      </div>`).join('')}
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <input type="text" id="bld-new" placeholder="موقع جديد… (B11، المستودع…)" style="flex:1;border:1px solid var(--line-2);border-radius:7px;padding:8px 10px">
+        <button class="btn btn-sm" id="bld-add">${icon('plus', 14)} إضافة</button>
+      </div>
       <div class="divider"></div>
       <div class="field"><label>اسم الدور الجديد</label>
         <input type="text" id="nr-name" placeholder="مثال: مشرف بيئة"></div>
@@ -2235,7 +2447,7 @@ function viewProfile() {
     // الوضع المحلي التجريبي: الملف يعرض الدور الحالي فقط
     return `<div class="card card-pad"><div class="empty">الملف الشخصي يعمل بعد تسجيل الدخول (الوضع السحابي)</div></div>`;
   }
-  const pending = DB.permits.filter(p => permitStatus(p) === 'pending' && HSE.chain[p.stage] && HSE.chain[p.stage].key === emp.role);
+  const pending = DB.permits.filter(p => permitStatus(p) === 'pending' && permitChain(p)[p.stage] && permitChain(p)[p.stage].key === emp.role);
   const savedSig = DB.savedSignatures[emp.role];
   afterRender = () => {
     $('#pf-savepin').addEventListener('click', () => {

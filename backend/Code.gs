@@ -130,6 +130,7 @@ function doPost(e) {
       case 'nextSeq': return json_(nextSeq_(req.type));
       case 'archive': return json_(archive_(req.code, req.html, req.permitId));
       case 'driveList': return json_(driveList_(req.folderId));
+      case 'upload': return json_(upload_(req.name, req.mime, req.data));
       default: return json_({ error: 'unknown_action' });
     }
   } catch (err) {
@@ -324,6 +325,20 @@ function driveList_(folderId) {
   return out;
 }
 
+/* ---------------- رفع الوسائط (صور/مقاطع) إلى Drive ---------------- */
+
+function upload_(name, mime, data) {
+  if (!data) return { error: 'missing_data' };
+  const folder = projectFolder_();
+  const it = folder.getFoldersByName('HSE Media');
+  const mf = it.hasNext() ? it.next() : folder.createFolder('HSE Media');
+  const blob = Utilities.newBlob(Utilities.base64Decode(data), mime || 'application/octet-stream',
+    name || ('media-' + new Date().getTime()));
+  const f = mf.createFile(blob);
+  f.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  return { ok: true, url: f.getUrl(), id: f.getId() };
+}
+
 /* ---------------- الإشعارات بالبريد ---------------- */
 
 function notifyIfNeeded_(oldP, newP) {
@@ -334,15 +349,16 @@ function notifyIfNeeded_(oldP, newP) {
     const link = appUrl + '#/permit/' + newP.id;
     const code = newP.code || '';
 
-    if (status === 'pending' && newP.stage > oldStage && newP.stage < APPROVAL_CHAIN.length) {
-      const roleKey = APPROVAL_CHAIN[newP.stage].key;
+    const chain = (newP.chain && newP.chain.length) ? newP.chain : APPROVAL_CHAIN;
+    if (status === 'pending' && newP.stage > oldStage && newP.stage < chain.length) {
+      const roleKey = chain[newP.stage].key;
       const emp = employeeByRole_(roleKey);
       if (emp && emp.email) {
         MailApp.sendEmail({
           to: emp.email,
           subject: 'تصريح عمل بانتظار توقيعك — ' + code,
           htmlBody: mailBody_('لديك تصريح عمل بانتظار توقيعك بدور: <b>' +
-            APPROVAL_CHAIN[newP.stage].ar + '</b>', newP, link),
+            chain[newP.stage].ar + '</b>', newP, link),
         });
       }
     }
@@ -375,7 +391,8 @@ function mailBody_(msg, p, link) {
 function permitStatus_(p) {
   if (p.rejection) return 'rejected';
   if (p.closeout) return 'closed';
-  if ((p.stage || 0) >= APPROVAL_CHAIN.length) return 'approved';
+  const n = (p.chain && p.chain.length) ? p.chain.length : APPROVAL_CHAIN.length;
+  if ((p.stage || 0) >= n) return 'approved';
   return 'pending';
 }
 
