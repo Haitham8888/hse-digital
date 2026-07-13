@@ -2450,7 +2450,7 @@ function viewLogin() {
   <div style="max-width:420px;margin:8vh auto 0">
     <div class="card card-pad" style="text-align:center">
       <div class="brand-mark" style="margin:0 auto 10px;width:48px;height:48px;font-size:22px;font-family:var(--font)">ف</div>
-      <div style="font-weight:700;font-size:18px">${tr('login')}</div>
+      <div style="font-family:var(--font-display);font-weight:700;font-size:19px">${tr('login')}</div>
       <div class="hint" style="margin-bottom:16px">${esc(HSE.project.siteAr)}</div>
       <div class="field" style="text-align:start;margin-bottom:10px"><label>${tr('name')}</label>
         <select id="lg-emp">${loginables.map(e => `<option value="${e.id}">${esc(e.name)} — ${roleAr(e.role)}</option>`).join('')}</select></div>

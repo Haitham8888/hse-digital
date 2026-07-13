@@ -201,7 +201,7 @@ function viewRegHub() {
     return `<div class="eq-card" onclick="location.hash='#/reg/${key}'">
       <div class="eq-ic" style="color:${c.color}">${icon(c.icon, 21)}</div>
       <div class="eq-main">
-        <div class="eq-name">${esc(c.titleAr)}</div>
+        <div class="eq-name">${esc(LANG === 'en' ? c.en : c.titleAr)}</div>
         <div class="eq-meta">${list.length} سجلًا${c.closable && open ? ` · ${open} مفتوح` : ''}</div>
       </div>
       ${icon('back', 16)}
@@ -209,24 +209,24 @@ function viewRegHub() {
   }).join('');
   return `
   <div class="page-head"><div class="grow">
-    <div class="page-title">السجلات</div>
-    <div class="page-sub">كل نماذج المشروع الرقمية — مرقمة ومؤرشفة تلقائيًا في مجلداتها بالدرايف</div>
+    <div class="page-title">${tr('registers')}</div>
+    <div class="page-sub">${tr('regsSub')}</div>
   </div></div>
   <div class="eq-grid">
     <div class="eq-card" onclick="location.hash='#/risk'">
       <div class="eq-ic" style="color:var(--amber-ink)">${icon('alert', 21)}</div>
-      <div class="eq-main"><div class="eq-name">تقييم المخاطر</div>
+      <div class="eq-main"><div class="eq-name">${tr('risk')}</div>
       <div class="eq-meta">${(DB.assessments || []).length} تقييمًا</div></div>${icon('back', 16)}
     </div>
     ${cards}
     <div class="eq-card" onclick="location.hash='#/board'">
       <div class="eq-ic" style="color:var(--green)">${icon('grid', 21)}</div>
-      <div class="eq-main"><div class="eq-name">اللوحة الإحصائية KPI</div>
+      <div class="eq-main"><div class="eq-name">${tr('board')}</div>
       <div class="eq-meta">تتولد تلقائيًا من بيانات النظام</div></div>${icon('back', 16)}
     </div>
     <div class="eq-card" onclick="location.hash='#/docs'">
       <div class="eq-ic">${icon('doc', 21)}</div>
-      <div class="eq-main"><div class="eq-name">مكتبة الوثائق</div>
+      <div class="eq-main"><div class="eq-name">${tr('docs')}</div>
       <div class="eq-meta">السياسات، خطة الطوارئ، خطة HSE…</div></div>${icon('back', 16)}
     </div>
   </div>`;
@@ -240,8 +240,8 @@ function viewRegList(key) {
   <div class="page-head">
     <a class="btn btn-ghost btn-sm" href="#/registers" style="padding-inline:6px">${icon('back', 18)}</a>
     <div class="grow">
-      <div class="page-title">${esc(c.titleAr)}</div>
-      <div class="page-sub">${esc(c.en)} — يؤرشف في مجلد «${esc(c.folder)}»</div>
+      <div class="page-title">${esc(LANG === 'en' ? c.en : c.titleAr)}</div>
+      <div class="page-sub">${esc(LANG === 'en' ? c.titleAr : c.en)} — يؤرشف في مجلد «${esc(c.folder)}»</div>
     </div>
     ${canCreate() ? `<a class="btn btn-amber" href="#/reg/${key}/new">${icon('plus', 16)} ${esc(c.one)} جديد</a>` : ''}
   </div>
@@ -456,7 +456,7 @@ function viewRegDetail(key, id) {
     <a class="btn btn-ghost btn-sm" href="#/reg/${key}" style="padding-inline:6px">${icon('back', 18)}</a>
     <div class="grow">
       <div class="row-code" style="font-size:13px">${esc(r.refNo)}</div>
-      <div class="page-title" style="font-size:17px">${esc(c.listTitle(r) || c.one)}</div>
+      <div class="page-title" style="font-size:17px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${esc(c.listTitle(r) || c.one)}</div>
       <div class="page-sub">${esc(r.by || '')} · ${fmtDT(r.createdAt)}</div>
     </div>
     ${c.closable ? (r.status === 'closed' ? '<span class="stamp big st-closed">مغلق</span>' : '<span class="stamp big st-pending">مفتوح</span>') : ''}
@@ -469,7 +469,7 @@ function viewRegDetail(key, id) {
     </div>
     ${c.fields.filter(f => f.type === 'textarea' && r[f.k]).map(f => `
       <div style="margin-top:10px"><div style="font-size:11px;color:var(--mut);font-weight:600">${esc(f.ar)}</div>
-      <div style="font-size:13.5px;white-space:pre-line">${esc(r[f.k])}</div></div>`).join('')}
+      <div class="prose" style="white-space:pre-line">${esc(r[f.k])}</div></div>`).join('')}
   </div>
 
   ${c.rows && (r.items || []).length ? `
@@ -651,11 +651,11 @@ function viewBoard() {
   <div class="page-head">
     <a class="btn btn-ghost btn-sm" href="#/registers" style="padding-inline:6px">${icon('back', 18)}</a>
     <div class="grow">
-      <div class="page-title">اللوحة الإحصائية — Safety Records</div>
-      <div class="page-sub">OUR TARGET IS ZERO INCIDENT — تتولد تلقائيًا من بيانات النظام</div>
+      <div class="page-title">${tr('board')}</div>
+      <div class="page-sub">Safety Records — OUR TARGET IS ZERO INCIDENT</div>
     </div>
     ${isAdmin() ? `<button class="btn btn-sm" id="bd-edit">${icon('pen', 14)} الإعدادات</button>` : ''}
-    <button class="btn" id="bd-print">${icon('print', 15)} طباعة اللوحة</button>
+    <button class="btn btn-sm" id="bd-print">${icon('print', 14)} طباعة</button>
   </div>
   <div class="kpis">
     <div class="kpi" style="--kc:var(--green)"><div class="n">${totalHours.toLocaleString()}</div><div class="l">إجمالي ساعات العمل</div><div class="s">${workforce} عاملًا × ${hoursDay} ساعات × ${days} يومًا</div></div>

@@ -3,12 +3,27 @@
    Design language: field-document / paper & ink / safety amber
    ============================================================ */
 
-/* خط ثمانية — Thmanyah Sans */
+/* ============================================================
+   خط ثمانية — النظام الطباعي الكامل (وفق دليل جماليات الخط)
+   Sans (الرقمي): واجهة الاستخدام والنصوص القصيرة
+   Serif Display (للعناوين): العناوين الكبيرة والأرقام الإحصائية
+   Serif Text (للنصوص): الفقرات الطويلة والنماذج الرسمية
+   نظام الكشيدة: خاصية salt (الأحرف المرسلة) للشعار فقط —
+   الدليل ينصّ على عدم الإكثار منها في الجملة الواحدة
+   ============================================================ */
 @font-face { font-family: 'ThmanyahSans'; src: url('../Thmanyah-Font-Family/thmanyah typeface/thmanyahsans/woff2/thmanyahsans-Light.woff2') format('woff2'); font-weight: 300; font-display: swap; }
 @font-face { font-family: 'ThmanyahSans'; src: url('../Thmanyah-Font-Family/thmanyah typeface/thmanyahsans/woff2/thmanyahsans-Regular.woff2') format('woff2'); font-weight: 400; font-display: swap; }
 @font-face { font-family: 'ThmanyahSans'; src: url('../Thmanyah-Font-Family/thmanyah typeface/thmanyahsans/woff2/thmanyahsans-Medium.woff2') format('woff2'); font-weight: 500; font-display: swap; }
 @font-face { font-family: 'ThmanyahSans'; src: url('../Thmanyah-Font-Family/thmanyah typeface/thmanyahsans/woff2/thmanyahsans-Bold.woff2') format('woff2'); font-weight: 600 700; font-display: swap; }
 @font-face { font-family: 'ThmanyahSans'; src: url('../Thmanyah-Font-Family/thmanyah typeface/thmanyahsans/woff2/thmanyahsans-Black.woff2') format('woff2'); font-weight: 800 900; font-display: swap; }
+
+@font-face { font-family: 'ThmanyahSerifDisplay'; src: url('../Thmanyah-Font-Family/thmanyah typeface/thmanyahserifdisplay/woff2/thmanyahserifdisplay-Medium.woff2') format('woff2'); font-weight: 400 500; font-display: swap; }
+@font-face { font-family: 'ThmanyahSerifDisplay'; src: url('../Thmanyah-Font-Family/thmanyah typeface/thmanyahserifdisplay/woff2/thmanyahserifdisplay-Bold.woff2') format('woff2'); font-weight: 600 700; font-display: swap; }
+@font-face { font-family: 'ThmanyahSerifDisplay'; src: url('../Thmanyah-Font-Family/thmanyah typeface/thmanyahserifdisplay/woff2/thmanyahserifdisplay-Black.woff2') format('woff2'); font-weight: 800 900; font-display: swap; }
+
+@font-face { font-family: 'ThmanyahSerifText'; src: url('../Thmanyah-Font-Family/thmanyah typeface/thmanyahseriftext/woff2/thmanyahseriftext-Regular.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+@font-face { font-family: 'ThmanyahSerifText'; src: url('../Thmanyah-Font-Family/thmanyah typeface/thmanyahseriftext/woff2/thmanyahseriftext-Medium.woff2') format('woff2'); font-weight: 500; font-display: swap; }
+@font-face { font-family: 'ThmanyahSerifText'; src: url('../Thmanyah-Font-Family/thmanyah typeface/thmanyahseriftext/woff2/thmanyahseriftext-Bold.woff2') format('woff2'); font-weight: 600 700; font-display: swap; }
 
 :root {
   --paper: #f3f1ec;
@@ -36,6 +51,8 @@
   --r-s: 5px;
   --shadow: 0 1px 2px rgba(25, 27, 31, .05);
   --font: 'ThmanyahSans', 'IBM Plex Sans Arabic', 'Segoe UI', system-ui, sans-serif;
+  --font-display: 'ThmanyahSerifDisplay', 'ThmanyahSans', 'IBM Plex Sans Arabic', serif;
+  --font-serif: 'ThmanyahSerifText', 'ThmanyahSans', 'IBM Plex Sans Arabic', serif;
   --mono: 'IBM Plex Mono', 'Courier New', monospace;
 
   --header-h: 56px;
@@ -63,6 +80,13 @@ a { color: inherit; text-decoration: none; }
 
 .mono { font-family: var(--mono); font-feature-settings: 'tnum'; direction: ltr; unicode-bidi: embed; }
 
+/* نص طويل بخط ثمانية للنصوص — مع ضبط الأسطر (كشيدة القراءة الرسمية) */
+.prose {
+  font-family: var(--font-serif);
+  font-size: 14.5px; line-height: 1.95;
+  text-align: justify;
+}
+
 /* ---------- hazard tape accent ---------- */
 .tape {
   height: 5px;
@@ -89,11 +113,17 @@ a { color: inherit; text-decoration: none; }
   background: var(--amber); color: var(--ink);
   border-radius: 7px;
   display: grid; place-items: center;
-  font-weight: 700; font-size: 15px;
-  letter-spacing: .5px;
-  font-family: var(--mono);
+  font-weight: 800; font-size: 17px;
+  font-family: var(--font-display);
+  padding-bottom: 3px;
 }
-.brand-name { font-weight: 700; font-size: 16px; white-space: nowrap; }
+/* الشعار «فراس» بنظام الكشيدة — الأحرف المرسلة (salt) من خط ثمانية للعناوين */
+.brand-name {
+  font-family: var(--font-display);
+  font-feature-settings: 'salt' 1;
+  font-weight: 700; font-size: 18px; line-height: 1.2;
+  white-space: nowrap;
+}
 .brand-sub { font-size: 11px; color: #b9bdc4; margin-top: -4px; white-space: nowrap; }
 
 .sync-chip {
@@ -201,7 +231,7 @@ a { color: inherit; text-decoration: none; }
 /* ---------- generic ---------- */
 .page-head { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
 .page-head .grow { flex: 1; min-width: 0; }
-.page-title { font-size: 20px; font-weight: 700; line-height: 1.3; }
+.page-title { font-family: var(--font-display); font-size: 21px; font-weight: 700; line-height: 1.35; }
 .page-sub { font-size: 13px; color: var(--mut); margin-top: 2px; }
 
 .card {
@@ -286,7 +316,7 @@ a { color: inherit; text-decoration: none; }
   content: ''; position: absolute; inset-inline-start: 0; top: 0; bottom: 0;
   width: 4px; background: var(--kc, var(--amber));
 }
-.kpi .n { font-size: 26px; font-weight: 700; font-family: var(--mono); line-height: 1.15; }
+.kpi .n { font-size: 27px; font-weight: 700; font-family: var(--font-display); font-feature-settings: 'tnum'; line-height: 1.15; direction: ltr; unicode-bidi: embed; }
 .kpi .l { font-size: 12px; color: var(--ink-2); font-weight: 600; }
 .kpi .s { font-size: 11px; color: var(--mut); }
 
@@ -487,7 +517,7 @@ a { color: inherit; text-decoration: none; }
 .modal-head {
   display: flex; align-items: center; gap: 10px;
   padding: 14px 18px; border-bottom: 1px solid var(--line);
-  font-weight: 700;
+  font-family: var(--font-display); font-weight: 700; font-size: 16px;
   position: sticky; top: 0; background: var(--card); z-index: 2;
 }
 .modal-head .x { margin-inline-start: auto; background: none; border: 0; color: var(--mut); padding: 4px; }
@@ -645,8 +675,8 @@ a { color: inherit; text-decoration: none; }
 .sh-party .nm { font-weight: 700; font-size: 10.5pt; line-height: 1.3; }
 .sh-party .ar { font-size: 8.5pt; }
 .sh-title { display: flex; flex-direction: column; justify-content: center; }
-.sh-title .t { font-size: 15pt; font-weight: 800; letter-spacing: .3px; }
-.sh-title .t-ar { font-size: 10pt; font-weight: 600; }
+.sh-title .t { font-family: var(--font-display); font-size: 15pt; font-weight: 800; letter-spacing: .3px; }
+.sh-title .t-ar { font-family: var(--font-serif); font-size: 10.5pt; font-weight: 600; }
 
 .sh-code {
   border: 1.6px solid #111; border-top: 0;
