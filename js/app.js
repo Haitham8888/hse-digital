@@ -68,8 +68,35 @@ function migrateDB() {
     });
     DB.v = 5;
   }
-  if (DB.v < 6) DB.v = 6;
+  if (DB.v < 7) {
+    // الأدمن هو فراس هتان — مدير تشغيل النظام
+    const push = DB._pushRoster || (DB._pushRoster = []);
+    const adm = DB.employees.find(e => e.id === 'e0');
+    if (adm && adm.name === 'Admin') {
+      adm.name = 'Feras Hatan'; adm.company = 'RBC';
+      push.push('e0');
+    }
+    const dup = DB.employees.find(e => e.id === 'e16');
+    if (dup && dup.active) { dup.active = false; push.push('e16'); }
+  }
+  if (DB.v < 7) DB.v = 7;
   saveDB();
+}
+
+// إنشاء الطلبات (تصاريح/تقييمات/معدات): الأدمن ومنشئو التصاريح فقط —
+// بقية الأدوار تراجع وتوقع. الوضع المحلي التجريبي مفتوح.
+function canCreate() {
+  if (!CLOUD.enabled()) return true;
+  const e = sessionEmployee();
+  return !!(e && (e.role === 'admin' || e.role === 'creator'));
+}
+function canInspect() {
+  if (!CLOUD.enabled()) return true;
+  const e = sessionEmployee();
+  return !!(e && (e.role === 'admin' || e.role === 'creator' || e.role === 'inspector'));
+}
+function blockedCard(msg) {
+  return `<div class="card card-pad"><div class="empty">${icon('shield', 30)} ${msg}</div></div>`;
 }
 
 /* ---------------- الجلسة: دخول / خروج ---------------- */
@@ -470,6 +497,7 @@ function newDraft() {
 }
 
 function viewPermitNew() {
+  if (!canCreate()) return blockedCard('إنشاء التصاريح صلاحية مدير النظام ومنشئي التصاريح — دورك المراجعة والتوقيع، وستصلك الطلبات في «بانتظار توقيعك»');
   if (!draft) draft = newDraft();
   const d = draft;
   const t = HSE.permitTypes[d.type];
@@ -1236,6 +1264,7 @@ function viewEquipmentDetail(id) {
 
 let inspDraft = null;
 function viewInspect(id) {
+  if (!canInspect()) return blockedCard('فحص المعدات صلاحية مدير النظام والفاحصين');
   const e = DB.equipment.find(x => x.id === id);
   if (!e) return `<div class="empty">المعدة غير موجودة</div>`;
   const ty = HSE.equipmentTypes[e.type];
@@ -1321,6 +1350,7 @@ function viewInspect(id) {
 
 /* إضافة معدة جديدة */
 function viewEquipmentNew() {
+  if (!canCreate()) return blockedCard('إضافة المعدات صلاحية مدير النظام ومنشئي التصاريح');
   afterRender = () => {
     $('#eq-save').addEventListener('click', () => {
       const type = $('#eq-type').value;
@@ -1506,6 +1536,7 @@ function viewRisk() {
 
 let raDraft = null;
 function viewRiskNew() {
+  if (!canCreate()) return blockedCard('إنشاء تقييمات المخاطر صلاحية مدير النظام ومنشئي التصاريح');
   if (!raDraft) raDraft = { activity: '', location: 'B02', assessor: 'HSE Department', rows: [], suggested: null };
 
   afterRender = () => {

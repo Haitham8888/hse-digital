@@ -429,7 +429,8 @@ const HSE = {
    التقارير الأسبوعية/الشهرية 2024-2025، والتصاريح الموقعة (السابقة PTW).
    الترتيب مهم: أول نشط بالدور هو المعتمد الظاهر في سلسلة التواقيع. */
 const REAL_ROSTER = [
-  { id: 'e0', name: 'Admin', role: 'admin', company: 'SCC', phone: '', active: true },
+  // الأدمن ومدير تشغيل النظام — ينشئ التصاريح والفحوصات والتقييمات ويدير الموظفين
+  { id: 'e0', name: 'Feras Hatan', role: 'admin', company: 'RBC', phone: '', active: true },
   // منشئو التصاريح — مهندسو الموقع (سجل التحضير)
   { id: 'e1', name: 'Ahmed Ramdan', role: 'creator', company: 'RBC', phone: '', active: true },
   { id: 'e7', name: 'Mustafa Ahmed', role: 'creator', company: 'RBC', phone: '', active: true },
@@ -452,7 +453,7 @@ const REAL_ROSTER = [
   { id: 'e24', name: 'Anwar Ali', role: 'hseConsultant', company: 'ESCC', phone: '', active: true },
   // فاحصو المعدات — مهندسو ومسؤولو السلامة (سجل التحضير + التقارير)
   { id: 'e6', name: 'Khalid Rehman', role: 'inspector', company: 'RBC', phone: '', active: true },
-  { id: 'e16', name: 'Feras Hatan', role: 'inspector', company: 'RBC', phone: '', active: true },
+  { id: 'e16', name: 'Feras Hatan', role: 'inspector', company: 'RBC', phone: '', active: false },
   { id: 'e17', name: 'Abdullah Al-Haqwi', role: 'inspector', company: 'RBC', phone: '', active: true },
   { id: 'e18', name: 'Abdulrahman Zain Al-Deen', role: 'inspector', company: 'RBC', phone: '966557437556', active: true },
   { id: 'e19', name: 'Fuad Allayl', role: 'inspector', company: 'RBC', phone: '', active: true },
