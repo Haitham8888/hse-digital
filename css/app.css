@@ -3,6 +3,13 @@
    Design language: field-document / paper & ink / safety amber
    ============================================================ */
 
+/* خط ثمانية — Thmanyah Sans */
+@font-face { font-family: 'ThmanyahSans'; src: url('../Thmanyah-Font-Family/thmanyah typeface/thmanyahsans/woff2/thmanyahsans-Light.woff2') format('woff2'); font-weight: 300; font-display: swap; }
+@font-face { font-family: 'ThmanyahSans'; src: url('../Thmanyah-Font-Family/thmanyah typeface/thmanyahsans/woff2/thmanyahsans-Regular.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+@font-face { font-family: 'ThmanyahSans'; src: url('../Thmanyah-Font-Family/thmanyah typeface/thmanyahsans/woff2/thmanyahsans-Medium.woff2') format('woff2'); font-weight: 500; font-display: swap; }
+@font-face { font-family: 'ThmanyahSans'; src: url('../Thmanyah-Font-Family/thmanyah typeface/thmanyahsans/woff2/thmanyahsans-Bold.woff2') format('woff2'); font-weight: 600 700; font-display: swap; }
+@font-face { font-family: 'ThmanyahSans'; src: url('../Thmanyah-Font-Family/thmanyah typeface/thmanyahsans/woff2/thmanyahsans-Black.woff2') format('woff2'); font-weight: 800 900; font-display: swap; }
+
 :root {
   --paper: #f3f1ec;
   --card: #ffffff;
@@ -28,7 +35,7 @@
   --r: 8px;
   --r-s: 5px;
   --shadow: 0 1px 2px rgba(25, 27, 31, .05);
-  --font: 'IBM Plex Sans Arabic', 'Segoe UI', system-ui, sans-serif;
+  --font: 'ThmanyahSans', 'IBM Plex Sans Arabic', 'Segoe UI', system-ui, sans-serif;
   --mono: 'IBM Plex Mono', 'Courier New', monospace;
 
   --header-h: 56px;
