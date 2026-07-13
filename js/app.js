@@ -42,6 +42,12 @@ function migrateDB() {
     if ((DB.counters.RA || 0) < 54) DB.counters.RA = 54;
     DB.v = 4;
   }
+  if (!DB.employees.some(e => e.role === 'admin')) {
+    // حساب الأدمن — يُنشئ الحسابات ويدير النظام
+    const adm = { id: 'e0', name: 'Admin', role: 'admin', company: 'SCC', phone: '', email: '', pin: '', active: true };
+    DB.employees.unshift(adm);
+    DB._pushAdmin = adm.id;
+  }
   if (DB.v < 5) {
     // أعمدة تقييم المخاطر بالنموذج المعتمد (P/S + المتبقي)
     DB.assessments.forEach(ra => {
@@ -64,9 +70,15 @@ function migrateDB() {
 const SESSION_KEY = 'hse_session_v1';
 // رموز افتراضية حسب الدور — تُستخدم فقط إذا لم يُحدد للموظف رمز شخصي بعد
 const DEFAULT_PINS = {
-  creator: '0000', siteManager: '1111', hseSupervisor: '2222',
+  admin: '9999', creator: '0000', siteManager: '1111', hseSupervisor: '2222',
   consultantEngineer: '3333', hseConsultant: '4444', inspector: '5555',
 };
+// صلاحيات الإدارة: الأدمن فقط في الوضع السحابي — الوضع المحلي التجريبي مفتوح
+function isAdmin() {
+  if (!CLOUD.enabled()) return true;
+  const e = sessionEmployee();
+  return !!(e && e.role === 'admin');
+}
 function getSession() {
   try { return JSON.parse(localStorage.getItem(SESSION_KEY) || 'null'); }
   catch (e) { return null; }
@@ -1720,7 +1732,9 @@ function viewTeam() {
     emps: DB.employees.filter(e => e.role === r.key),
   })).filter(g => g.emps.length);
 
+  const admin = isAdmin();
   afterRender = () => {
+    if (!admin) return;
     $$('.js-emp-toggle').forEach(b => b.addEventListener('click', ev => {
       ev.stopPropagation();
       const e = DB.employees.find(x => x.id === b.dataset.id);
@@ -1734,9 +1748,9 @@ function viewTeam() {
   <div class="page-head">
     <div class="grow">
       <div class="page-title">إدارة الموظفين</div>
-      <div class="page-sub">${DB.employees.filter(e => e.active).length} نشط من أصل ${DB.employees.length} — المعتمدون والفاحصون والعمال</div>
+      <div class="page-sub">${DB.employees.filter(e => e.active).length} نشط من أصل ${DB.employees.length} — ${admin ? 'الإضافة والتعديل والإيقاف بيدك (أدمن)' : 'عرض فقط — الإدارة لمسؤول النظام'}</div>
     </div>
-    <a class="btn btn-amber" href="#/team/new">${icon('plus', 16)} موظف جديد</a>
+    ${admin ? `<a class="btn btn-amber" href="#/team/new">${icon('plus', 16)} موظف جديد</a>` : ''}
   </div>
 
   ${groups.map(g => `
@@ -1745,7 +1759,7 @@ function viewTeam() {
       <span class="chip">${g.emps.length}</span><span class="spacer"></span></div>
     <div class="row-list">
       ${g.emps.map(e => `
-      <div class="row-item ${e.active ? '' : 'emp-off'}" onclick="location.hash='#/team/${e.id}'">
+      <div class="row-item ${e.active ? '' : 'emp-off'}" ${admin ? `onclick="location.hash='#/team/${e.id}'"` : 'style="cursor:default"'}>
         <div class="eq-ic">${icon('user', 19)}</div>
         <div class="row-main">
           <div class="row-title" dir="ltr" style="text-align:start">${esc(e.name)}</div>
@@ -1753,7 +1767,7 @@ function viewTeam() {
         </div>
         <div class="row-side">
           <span class="stamp ${e.active ? 'st-approved' : 'st-closed'}">${e.active ? 'نشط' : 'موقوف'}</span>
-          <button class="btn btn-sm js-emp-toggle" data-id="${e.id}">${e.active ? 'إيقاف' : 'تفعيل'}</button>
+          ${admin ? `<button class="btn btn-sm js-emp-toggle" data-id="${e.id}">${e.active ? 'إيقاف' : 'تفعيل'}</button>` : ''}
         </div>
       </div>`).join('')}
     </div>
@@ -1766,6 +1780,7 @@ function viewTeam() {
 }
 
 function viewTeamForm(id) {
+  if (!isAdmin()) return `<div class="card card-pad"><div class="empty">${icon('shield', 30)} إنشاء الحسابات وتعديلها صلاحية مسؤول النظام (الأدمن) فقط</div></div>`;
   const editing = id ? DB.employees.find(e => e.id === id) : null;
   if (id && !editing) return `<div class="empty">الموظف غير موجود</div>`;
   const e = editing || { name: '', role: 'worker', company: 'RBC', phone: '', active: true };
@@ -2077,7 +2092,19 @@ function boot() {
 
   // المزامنة السحابية في الخلفية (لا تؤخر فتح التطبيق)
   CLOUD.indicator();
-  CLOUD.bootstrap().then(() => { buildRoleSwitcher(); render(); });
+  CLOUD.bootstrap().then(() => {
+    // ضمان وجود حساب الأدمن في القاعدة المشتركة
+    if (DB._pushAdmin || !DB.employees.some(e => e.role === 'admin')) {
+      let adm = DB.employees.find(e => e.role === 'admin');
+      if (!adm) {
+        adm = { id: 'e0', name: 'Admin', role: 'admin', company: 'SCC', phone: '', email: '', pin: '', active: true };
+        DB.employees.unshift(adm);
+      }
+      delete DB._pushAdmin;
+      CLOUD.push('employees', adm);
+    }
+    buildRoleSwitcher(); render();
+  });
   CLOUD.startPolling();
 }
 

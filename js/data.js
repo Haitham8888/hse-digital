@@ -75,6 +75,7 @@ const HSE = {
 
   // أدوار الفريق — أول خمسة أدوار تشغيلية تظهر في مبدّل الدخول
   teamRoles: [
+    { key: 'admin', ar: 'مسؤول النظام (Admin)', duty: true },
     { key: 'creator', ar: 'منشئ تصاريح (مشرف مقاول)', duty: true },
     { key: 'siteManager', ar: 'مدير الموقع', duty: true },
     { key: 'hseSupervisor', ar: 'مشرف السلامة HSE', duty: true },
@@ -425,6 +426,7 @@ const HSE = {
 
 function seedEmployees() {
   return withEmail_([
+    { id: 'e0', name: 'Admin', role: 'admin', company: 'SCC', phone: '', active: true },
     { id: 'e1', name: 'Sayed Moqeer', role: 'creator', company: 'RBC', phone: '', active: true },
     { id: 'e2', name: 'Mostafa Mukhtar', role: 'siteManager', company: 'RBC', phone: '', active: true },
     { id: 'e3', name: 'Mohammed Naveed', role: 'hseSupervisor', company: 'RBC', phone: '', active: true },
