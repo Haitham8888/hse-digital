@@ -2,5 +2,5 @@
    (Deploy ← Web app ← Execute as: Me / Access: Anyone).
    اتركه فارغًا ليعمل الموقع بوضع تجريبي محلي على كل جهاز. */
 window.HSE_CONFIG = {
-  backendUrl: 'https://script.google.com/macros/s/AKfycbx5N6NYCcdmOy1-dD5jQ3LsNoKQtsqIAfEy0ly-vVYpY3f4zym_RSDTfAV8ZPPFtEiFgA/exec',
+  backendUrl: 'https://script.google.com/macros/s/AKfycby-oVL3l6J_7fOVulJV2VcrHBLjVRbkaEh2eLGmCDX0f9fmUVEbNqctJQr0GvFiVva07g/exec',
 };
