@@ -2089,6 +2089,8 @@ function printRA(ra) {
 /* ============================================================
    إدارة الموظفين
    ============================================================ */
+let teamTab = 'emps'; // الموظفون | الأدوار | السلم | المواقع
+
 function viewTeam() {
   const groups = allTeamRoles().map(r => ({
     role: r,
@@ -2096,7 +2098,23 @@ function viewTeam() {
   })).filter(g => g.emps.length);
 
   const admin = isAdmin();
+  if (!admin) teamTab = 'emps';
   afterRender = () => {
+    // تبويبات القسم
+    $$('.js-team-tab').forEach(b => b.addEventListener('click', () => {
+      teamTab = b.dataset.t; render();
+    }));
+    // بحث فوري بلا إعادة رسم (يحافظ على التركيز)
+    $('#emp-q')?.addEventListener('input', () => {
+      const q = $('#emp-q').value.trim().toLowerCase();
+      $$('.js-emp-row').forEach(r => {
+        r.style.display = !q || (r.dataset.q || '').includes(q) ? '' : 'none';
+      });
+      $$('.js-emp-group').forEach(g => {
+        const any = $$('.js-emp-row', g).some(r => r.style.display !== 'none');
+        g.style.display = any ? '' : 'none';
+      });
+    });
     if (!admin) return;
     $$('.js-emp-toggle').forEach(b => b.addEventListener('click', ev => {
       ev.stopPropagation();
@@ -2195,22 +2213,21 @@ function viewTeam() {
     });
   };
 
-  return `
-  <div class="page-head">
-    <div class="grow">
-      <div class="page-title">${tr('team')}</div>
-      <div class="page-sub">${DB.employees.filter(e => e.active).length} نشط من أصل ${DB.employees.length} — ${admin ? 'الإضافة والتعديل والإيقاف بيدك (أدمن)' : 'عرض فقط — الإدارة لمسؤول النظام'}</div>
-    </div>
-    ${admin ? `<a class="btn btn-amber" href="#/team/new">${icon('plus', 16)} موظف جديد</a>` : ''}
-  </div>
-
+  /* ---------- تبويب: الموظفون ---------- */
+  const empsTab = `
+  ${admin ? `<a class="quick-add js-quick-emp" href="#/team/new">
+    <span class="qa-ic">${icon('plus', 18)}</span>
+    <span class="grow"><b>موظف جديد</b><small>الاسم، الدور، الجهة، الجوال ورمز الدخول</small></span>
+    ${icon('back', 16)}
+  </a>` : ''}
+  <div class="search-wrap"><input type="search" id="emp-q" placeholder="ابحث بالاسم أو الجهة أو الجوال…" autocomplete="off"></div>
   ${groups.map(g => `
-  <div class="card">
-    <div class="card-head">${icon(g.role.duty ? 'pen' : g.role.key === 'worker' ? 'user' : 'check', 17)} ${g.role.ar}
+  <div class="card js-emp-group">
+    <div class="card-head">${icon(g.role.duty ? 'pen' : g.role.key === 'worker' ? 'user' : 'check', 17)} ${esc(g.role.ar)}
       <span class="chip">${g.emps.length}</span><span class="spacer"></span></div>
     <div class="row-list">
       ${g.emps.map(e => `
-      <div class="row-item ${e.active ? '' : 'emp-off'}" ${admin ? `onclick="location.hash='#/team/${e.id}'"` : 'style="cursor:default"'}>
+      <div class="row-item js-emp-row ${e.active ? '' : 'emp-off'}" data-q="${esc((e.name + ' ' + e.company + ' ' + (e.phone || '')).toLowerCase())}" ${admin ? `onclick="location.hash='#/team/${e.id}'"` : 'style="cursor:default"'}>
         <div class="eq-ic">${icon('user', 19)}</div>
         <div class="row-main">
           <div class="row-title" dir="ltr" style="text-align:start">${esc(e.name)}</div>
@@ -2223,67 +2240,122 @@ function viewTeam() {
       </div>`).join('')}
     </div>
   </div>`).join('')}
+  <div class="card card-pad"><div class="hint">أضف رقم الجوال بصيغة دولية (9665xxxxxxxx) ليصل تنبيه واتساب مباشرة لصاحب الدور عند وصول الدور إليه.</div></div>`;
 
-  ${admin ? `
+  /* ---------- تبويب: الأدوار (الإضافة أولًا ثم القائمة) ---------- */
+  const empCountFor = k => DB.employees.filter(e => e.role === k && e.id !== '_roles').length;
+  const rolesTab = `
+  <div class="quick-add">
+    <div class="qa-title">${icon('plus', 16)} إضافة دور جديد</div>
+    <div class="qa-row">
+      <input type="text" id="nr-name" placeholder="اسم الدور… (مثال: مشرف بيئة)">
+      <button class="btn btn-amber" id="nr-add">إضافة</button>
+    </div>
+    <div class="qa-checks">
+      <label><input type="checkbox" id="nr-create"> يُنشئ تصاريح وتقييمات وسجلات</label>
+      <label><input type="checkbox" id="nr-inspect"> يفحص المعدات</label>
+    </div>
+    <small class="qa-hint">بعد الإضافة: أسنده لموظف من تبويب «الموظفون»، وأدخله سلم الاعتماد إن أردت أن يوقّع.</small>
+  </div>
   <div class="card">
-    <div class="card-head">${icon('shield', 17)} الأدوار المخصصة <span class="chip">${customRoles().length}</span></div>
-    <div class="card-pad">
+    <div class="card-head">${icon('shield', 17)} الأدوار الحالية <span class="chip">${allTeamRoles().length}</span></div>
+    <div class="row-list">
       ${allTeamRoles().map(r => {
         const inChain = chainRoles().some(c => c.key === r.key);
-        const deletable = r.key !== 'admin';
+        const n = empCountFor(r.key);
         return `
-      <div style="display:flex;gap:8px;align-items:center;padding:7px 0;border-bottom:1px dashed var(--line)">
-        <b style="flex:1;font-size:13.5px">${esc(r.ar)}</b>
-        <span class="chip">${r.custom ? 'مخصص' : inChain ? 'في سلم الاعتماد' : 'أساسي'}</span>
-        ${r.key !== 'admin' ? `<button class="btn btn-sm js-role-ren" data-k="${esc(r.key)}">تعديل الاسم</button>` : ''}
-        ${deletable ? `<button class="btn btn-sm js-role-del" data-k="${esc(r.key)}" style="color:var(--red)">حذف</button>` : ''}
+      <div class="row-item" style="cursor:default">
+        <div class="eq-ic">${icon(r.key === 'admin' ? 'cog' : inChain ? 'pen' : 'user', 18)}</div>
+        <div class="row-main">
+          <div class="row-title">${esc(r.ar)}</div>
+          <div class="row-meta">
+            <span class="chip">${r.key === 'admin' ? 'مسؤول النظام' : r.custom ? 'مخصص' : 'أساسي'}</span>
+            ${inChain ? '<span class="chip" style="background:var(--green-soft);color:var(--green)">في سلم الاعتماد</span>' : ''}
+            <span>${n} موظف</span>
+          </div>
+        </div>
+        <div class="row-side" style="flex-direction:row;gap:6px">
+          ${r.key !== 'admin' ? `<button class="btn btn-sm js-role-ren" data-k="${esc(r.key)}">${icon('pen', 13)}</button>` : ''}
+          ${r.key !== 'admin' ? `<button class="btn btn-sm js-role-del" data-k="${esc(r.key)}" style="color:var(--red)">${icon('x', 13)}</button>` : ''}
+        </div>
       </div>`;
       }).join('')}
-      <div class="divider"></div>
-      <div style="font-size:13.5px;font-weight:700;margin-bottom:6px">سلم الاعتماد — الترتيب من الأول للأخير:</div>
+    </div>
+  </div>
+  <div class="card card-pad"><div class="hint">لا يمكن حذف دور مُسند لموظفين — انقلهم لدور آخر أولًا. مسؤول النظام (الأدمن) ثابت.</div></div>`;
+
+  /* ---------- تبويب: سلم الاعتماد ---------- */
+  const chainTab = `
+  <div class="quick-add">
+    <div class="qa-title">${icon('plus', 16)} إضافة دور إلى السلم</div>
+    <div class="qa-row">
+      <select id="ch-add-sel">
+        ${allTeamRoles().filter(r => r.key !== 'admin' && r.key !== 'worker' && !chainRoles().some(c => c.key === r.key)).map(r => `<option value="${esc(r.key)}">${esc(r.ar)}</option>`).join('') || '<option value="">كل الأدوار داخل السلم</option>'}
+      </select>
+      <button class="btn btn-amber" id="ch-add">إضافة</button>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-head">${icon('check', 17)} ترتيب التوقيعات — من الأول إلى الأخير</div>
+    <div class="card-pad" style="padding-top:6px">
       ${chainRoles().map((c, i) => `
-      <div style="display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px dashed var(--line)">
+      <div class="ladder-step">
         <span class="ck-no">${i + 1}</span>
-        <b style="flex:1;font-size:13.5px">${esc(roleAr(c.key))}</b>
+        <div class="grow">
+          <b style="font-size:14px">${esc(roleAr(c.key))}</b>
+          <div style="font-size:11.5px;color:var(--mut)">${esc((empFor(c.key) || {}).name || 'لا يوجد موظف نشط بهذا الدور')}</div>
+        </div>
         <button class="btn btn-sm js-ch-up" data-i="${i}" ${i === 0 ? 'disabled' : ''}>↑</button>
         <button class="btn btn-sm js-ch-dn" data-i="${i}" ${i === chainRoles().length - 1 ? 'disabled' : ''}>↓</button>
-        <button class="btn btn-sm js-ch-rm" data-i="${i}" style="color:var(--red)" ${chainRoles().length <= 1 ? 'disabled' : ''}>إزالة</button>
+        <button class="btn btn-sm js-ch-rm" data-i="${i}" style="color:var(--red)" ${chainRoles().length <= 1 ? 'disabled' : ''}>${icon('x', 13)}</button>
       </div>`).join('')}
-      <div style="display:flex;gap:8px;margin-top:10px">
-        <select id="ch-add-sel" style="flex:1;border:1px solid var(--line-2);border-radius:7px;padding:8px 10px">
-          ${allTeamRoles().filter(r => r.key !== 'admin' && r.key !== 'worker' && !chainRoles().some(c => c.key === r.key)).map(r => `<option value="${esc(r.key)}">${esc(r.ar)}</option>`).join('')}
-        </select>
-        <button class="btn btn-sm" id="ch-add">${icon('plus', 14)} إضافة للسلم</button>
-      </div>
-      <div class="hint" style="margin-top:8px">التصاريح الجديدة تتبع هذا السلم — والتصاريح السابقة تحتفظ بسلسلتها كما وُقعت.</div>
-      <div class="divider"></div>
-      <div style="font-size:13.5px;font-weight:700;margin-bottom:6px">المواقع / المباني:</div>
-      ${buildingsList().map((b2, i) => `
-      <div style="display:flex;gap:8px;align-items:center;padding:5px 0;border-bottom:1px dashed var(--line)">
-        <b style="flex:1;font-size:13px" class="mono">${esc(b2)}</b>
-        <button class="btn btn-sm js-bld-ren" data-i="${i}">تعديل</button>
-        <button class="btn btn-sm js-bld-del" data-i="${i}" style="color:var(--red)" ${buildingsList().length <= 1 ? 'disabled' : ''}>حذف</button>
-      </div>`).join('')}
-      <div style="display:flex;gap:8px;margin-top:10px">
-        <input type="text" id="bld-new" placeholder="موقع جديد… (B11، المستودع…)" style="flex:1;border:1px solid var(--line-2);border-radius:7px;padding:8px 10px">
-        <button class="btn btn-sm" id="bld-add">${icon('plus', 14)} إضافة</button>
-      </div>
-      <div class="divider"></div>
-      <div class="field"><label>اسم الدور الجديد</label>
-        <input type="text" id="nr-name" placeholder="مثال: مشرف بيئة"></div>
-      <div style="display:flex;gap:18px;flex-wrap:wrap;margin:10px 0">
-        <label style="font-size:13px;font-weight:600;display:inline-flex;gap:6px;align-items:center"><input type="checkbox" id="nr-create"> يقدر ينشئ (تصاريح/تقييمات/معدات)</label>
-        <label style="font-size:13px;font-weight:600;display:inline-flex;gap:6px;align-items:center"><input type="checkbox" id="nr-inspect"> يقدر يفحص المعدات</label>
-      </div>
-      <button class="btn btn-amber" id="nr-add">${icon('plus', 15)} إضافة الدور</button>
-      <div class="hint" style="margin-top:10px">سلسلة الاعتماد الرباعية ثابتة كما في النموذج الرسمي — الدور الجديد يدخل ويعمل بصلاحياته، ثم أسنده لأي موظف من نموذجه.</div>
     </div>
-  </div>` : ''}
+  </div>
+  <div class="card card-pad"><div class="hint">التصاريح الجديدة تتبع هذا الترتيب بالضبط — والتصاريح السابقة تحتفظ بسلسلتها كما وُقعت. المعتمد المعروض هو الموظف <b>النشط</b> الأول بذلك الدور.</div></div>`;
 
-  <div class="card card-pad">
-    <div class="hint">المعتمد المعروض في سلسلة الموافقات هو الموظف <b>النشط</b> الأول بذلك الدور — التصاريح الموقعة سابقًا تحتفظ بأسماء موقّعيها كما هي.
-    <br>أضف رقم الجوال بصيغة دولية (9665xxxxxxxx) ليصل تنبيه واتساب مباشرة لصاحب الدور.</div>
-  </div>`;
+  /* ---------- تبويب: المواقع ---------- */
+  const bldTab = `
+  <div class="quick-add">
+    <div class="qa-title">${icon('plus', 16)} إضافة موقع / مبنى</div>
+    <div class="qa-row">
+      <input type="text" id="bld-new" placeholder="B11، المستودع، البوابة الشرقية…">
+      <button class="btn btn-amber" id="bld-add">إضافة</button>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-head">${icon('grid', 17)} المواقع المعتمدة <span class="chip">${buildingsList().length}</span></div>
+    <div class="row-list">
+      ${buildingsList().map((b2, i) => `
+      <div class="row-item" style="cursor:default">
+        <div class="row-main"><div class="row-title mono" style="font-size:13.5px">${esc(b2)}</div></div>
+        <div class="row-side" style="flex-direction:row;gap:6px">
+          <button class="btn btn-sm js-bld-ren" data-i="${i}">${icon('pen', 13)}</button>
+          <button class="btn btn-sm js-bld-del" data-i="${i}" style="color:var(--red)" ${buildingsList().length <= 1 ? 'disabled' : ''}>${icon('x', 13)}</button>
+        </div>
+      </div>`).join('')}
+    </div>
+  </div>
+  <div class="card card-pad"><div class="hint">هذه القائمة تظهر في كل النماذج: التصاريح، الفحوصات، التقييمات وكل السجلات.</div></div>`;
+
+  const tabs = [
+    { k: 'emps', ar: 'الموظفون', n: DB.employees.filter(e => e.id !== '_roles').length },
+    { k: 'roles', ar: 'الأدوار', n: allTeamRoles().length },
+    { k: 'chain', ar: 'سلم الاعتماد', n: chainRoles().length },
+    { k: 'bld', ar: 'المواقع', n: buildingsList().length },
+  ];
+  const body = teamTab === 'roles' ? rolesTab : teamTab === 'chain' ? chainTab : teamTab === 'bld' ? bldTab : empsTab;
+
+  return `
+  <div class="page-head">
+    <div class="grow">
+      <div class="page-title">${tr('team')}</div>
+      <div class="page-sub">${DB.employees.filter(e => e.active).length} نشط من أصل ${DB.employees.length} — ${admin ? 'الإدارة الكاملة بيدك (أدمن)' : 'عرض فقط — الإدارة لمسؤول النظام'}</div>
+    </div>
+  </div>
+  ${admin ? `<div class="pill-tabs">
+    ${tabs.map(t2 => `<button class="js-team-tab ${teamTab === t2.k ? 'on' : ''}" data-t="${t2.k}">${t2.ar}<span class="pt-n">${t2.n}</span></button>`).join('')}
+  </div>` : ''}
+  ${admin ? body : empsTab}`;
 }
 
 function viewTeamForm(id) {

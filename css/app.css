@@ -609,6 +609,87 @@ a { color: inherit; text-decoration: none; }
 .emp-off { opacity: .55; }
 .emp-off .row-title { text-decoration: line-through; text-decoration-color: var(--line-2); }
 
+/* ---------- إدارة الموظفين: تبويبات وأدوات ---------- */
+.pill-tabs {
+  display: flex; gap: 4px;
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: 12px; padding: 5px;
+  margin-bottom: 14px;
+  overflow-x: auto; -webkit-overflow-scrolling: touch;
+  box-shadow: var(--shadow);
+}
+.pill-tabs button {
+  flex: 1; min-width: max-content;
+  border: 0; background: none;
+  padding: 9px 12px; border-radius: 8px;
+  font-weight: 700; font-size: 13.5px; color: var(--ink-2);
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  white-space: nowrap;
+  transition: background .15s, color .15s;
+}
+.pill-tabs button.on { background: var(--ink); color: #fff; }
+.pill-tabs .pt-n {
+  font-size: 11px; font-weight: 700;
+  background: var(--slate-soft); color: var(--slate);
+  border-radius: 10px; padding: 1px 7px;
+}
+.pill-tabs button.on .pt-n { background: rgba(255, 255, 255, .18); color: #fff; }
+
+.search-wrap { margin-bottom: 12px; }
+.search-wrap input {
+  width: 100%;
+  border: 1px solid var(--line-2); border-radius: 10px;
+  padding: 11px 14px;
+  background: var(--card);
+  font-size: 14px;
+  box-shadow: var(--shadow);
+}
+.search-wrap input:focus { outline: 2px solid var(--amber); border-color: transparent; }
+
+/* لوحة إضافة سريعة أعلى كل قسم */
+.quick-add {
+  display: block;
+  background: var(--amber-soft);
+  border: 1px solid #ecd49b;
+  border-radius: 12px;
+  padding: 13px 15px;
+  margin-bottom: 13px;
+}
+a.quick-add { display: flex; align-items: center; gap: 11px; }
+a.quick-add small { display: block; color: var(--amber-ink); font-size: 11.5px; opacity: .8; }
+a.quick-add b { font-size: 14.5px; }
+.qa-ic {
+  width: 34px; height: 34px; flex: 0 0 34px;
+  background: var(--amber); color: var(--ink);
+  border-radius: 9px; display: grid; place-items: center;
+}
+.qa-title {
+  display: flex; align-items: center; gap: 7px;
+  font-weight: 800; font-size: 14px; margin-bottom: 10px;
+  color: var(--amber-ink);
+}
+.qa-row { display: flex; gap: 8px; }
+.qa-row input, .qa-row select {
+  flex: 1; min-width: 0;
+  border: 1px solid var(--line-2); border-radius: 8px;
+  padding: 10px 12px; background: #fff; font-size: 14px;
+}
+.qa-checks { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 10px; }
+.qa-checks label {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.qa-hint { display: block; margin-top: 9px; font-size: 11.5px; color: var(--amber-ink); opacity: .85; }
+
+/* سلم الاعتماد */
+.ladder-step {
+  display: flex; align-items: center; gap: 10px;
+  padding: 11px 0;
+  position: relative;
+}
+.ladder-step + .ladder-step { border-top: 1px dashed var(--line); }
+.ladder-step .ck-no { flex: 0 0 auto; }
+
 /* ---------- toast ---------- */
 .toast-holder {
   position: fixed; bottom: calc(var(--tabs-h) + 14px); left: 50%; transform: translateX(-50%);
