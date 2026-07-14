@@ -1602,7 +1602,7 @@ function viewEquipment() {
     <a class="btn btn-amber" href="#/equipment/new">${icon('plus', 16)} معدة جديدة</a>
   </div>
   <div class="eq-grid">
-    ${DB.equipment.map(e => {
+    ${DB.equipment.length ? DB.equipment.map(e => {
       const ty = HSE.equipmentTypes[e.type];
       const last = e.inspections[0];
       const st = equipmentDue(e);
@@ -1617,7 +1617,7 @@ function viewEquipment() {
         </div>
         ${badge}
       </div>`;
-    }).join('')}
+    }).join('') : `<div class="empty" style="grid-column:1/-1">${icon('truck', 30)} لا توجد معدات بعد — أضف أول معدة وسيتولد لها كود EQ وملصق QR تلقائيًا</div>`}
   </div>`;
 }
 
@@ -1707,11 +1707,23 @@ function viewInspect(id) {
   const clNo = 'CL-' + String(DB.counters.INS).padStart(4, '0');
 
   afterRender = () => {
+    // عداد التقدم: يوضح كم بندًا تبقى — رحلة واضحة بلا تخمين
+    const updateProgress = () => {
+      const done = inspDraft.items.filter(v => v !== 0).length;
+      const total = inspDraft.items.length;
+      const el = $('#ins-progress');
+      if (el) {
+        el.textContent = done === total ? '✓ اكتملت الإجابات — حدد النتيجة ووقّع' : `أجبت على ${done} من ${total} بندًا`;
+        el.className = 'ins-progress' + (done === total ? ' done' : '');
+      }
+    };
     $$('.seg3').forEach(seg => {
       seg.addEventListener('click', ev => {
         const b = ev.target.closest('button'); if (!b) return;
         inspDraft.items[+seg.dataset.i] = +b.dataset.v;
         $$('button', seg).forEach(x => x.classList.toggle('on', x === b));
+        seg.closest('.ck-item')?.classList.remove('ck-miss');
+        updateProgress();
         // اقتراح النتيجة تلقائيًا حسب الإجابات
         if (!inspDraft.items.some(v => v === 0)) {
           const noCount = inspDraft.items.filter(v => v === 2).length;
@@ -1720,11 +1732,29 @@ function viewInspect(id) {
         }
       });
     });
+    updateProgress();
     $$('.js-res').forEach(b => b.addEventListener('click', () => setInsResult(b.dataset.r)));
     $('#ins-notes').addEventListener('input', ev => inspDraft.notes = ev.target.value);
     $('#ins-save').addEventListener('click', () => {
-      if (inspDraft.items.some(v => v === 0)) { toast('أجب على جميع البنود بـ Yes أو No'); return; }
-      if (!inspDraft.result) { toast('حدد نتيجة الفحص (FIT / PARTIALLY FIT / UNFIT)'); return; }
+      if (inspDraft.items.some(v => v === 0)) {
+        // ظلل البنود غير المجابة وانتقل لأولها بدل رسالة عامة
+        let first = null;
+        $$('.seg3').forEach(seg => {
+          if (inspDraft.items[+seg.dataset.i] === 0) {
+            const item = seg.closest('.ck-item');
+            item.classList.add('ck-miss');
+            if (!first) first = item;
+          }
+        });
+        if (first) first.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        toast('أجب على البنود المظللة بالأحمر بـ YES أو NO');
+        return;
+      }
+      if (!inspDraft.result) {
+        $('#ins-resbar')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        toast('اختر النتيجة النهائية: FIT أو PARTIALLY أو UNFIT');
+        return;
+      }
       openSignature({
         title: 'توقيع الفاحص — Inspected By', name: currentUserName(),
         onDone: (sig) => {
@@ -1753,10 +1783,11 @@ function viewInspect(id) {
     <a class="btn btn-ghost btn-sm" href="#/equipment/${e.id}" style="padding-inline:6px">${icon('back', 18)}</a>
     <div class="grow">
       <div class="row-code" style="font-size:13px">${clNo} · ${e.code}</div>
-      <div class="page-title" style="font-size:18px">Equipment Inspection Checklist — ${esc(ty.ar)}</div>
-      <div class="page-sub">${esc(e.model)} · لوحة: ${esc(e.plate)} · ${roleAr('inspector')}: ${esc(currentUserName())} · ${fmtDate(new Date().toISOString())}</div>
+      <div class="page-title" style="font-size:18px">فحص ${esc(ty.ar)}</div>
+      <div class="page-sub">Equipment Inspection Checklist · ${esc(e.model)} · الفاحص: ${esc(currentUserName())} · ${fmtDate(new Date().toISOString())}</div>
     </div>
   </div>
+  <div class="ins-progress" id="ins-progress"></div>
   <div class="card card-pad">
     ${ty.items.map((item, i) => `
       <div class="ck-item">
@@ -1771,7 +1802,7 @@ function viewInspect(id) {
     <div class="field"><label>ملاحظات / Remarks <small>(اختياري)</small></label>
       <textarea id="ins-notes" placeholder="أي ملاحظات على حالة المعدة…"></textarea></div>
     <div style="font-size:13px;font-weight:700;margin:10px 0 6px">النتيجة النهائية — Overall Result:</div>
-    <div class="action-bar" style="margin-bottom:12px">
+    <div class="action-bar" style="margin-bottom:12px" id="ins-resbar">
       <button class="btn js-res res-fit" data-r="fit">FIT — صالحة</button>
       <button class="btn js-res res-partial" data-r="partial">PARTIALLY FIT — جزئيًا</button>
       <button class="btn js-res res-unfit" data-r="unfit">UNFIT — غير صالحة</button>
@@ -1797,10 +1828,16 @@ function viewEquipmentNew() {
       bindEqmDel();
     }));
     bindEqmDel();
-    $('#eq-save').addEventListener('click', () => {
+    const saveEq = (thenInspect) => {
       const type = $('#eq-type').value;
       const model = $('#eq-model').value.trim();
-      if (!model) { toast('اكتب موديل / وصف المعدة'); return; }
+      if (!model) {
+        const m = $('#eq-model');
+        m.classList.add('field-miss'); m.focus();
+        m.addEventListener('input', () => m.classList.remove('field-miss'), { once: true });
+        toast('اكتب موديل / وصف المعدة — الحقل المظلل');
+        return;
+      }
       const num = DB.equipment.length + 1;
       const eq = {
         id: 'eq' + Date.now().toString(36),
@@ -1814,9 +1851,11 @@ function viewEquipmentNew() {
       };
       eqNewMedia = [];
       DB.equipment.push(eq); saveDB(); CLOUD.push('equipment', eq);
-      toast(`تمت إضافة ${eq.code} — اطبع ملصق QR والصقه عليها`);
-      location.hash = '#/equipment/' + eq.id;
-    });
+      toast(`تمت إضافة ${eq.code} ✓`);
+      location.hash = thenInspect ? `#/equipment/${eq.id}/inspect` : `#/equipment/${eq.id}`;
+    };
+    $('#eq-save-inspect').addEventListener('click', () => saveEq(true));
+    $('#eq-save').addEventListener('click', () => saveEq(false));
   };
   const groups = Object.entries(HSE.equipmentTypes);
   return `
@@ -1844,7 +1883,9 @@ function viewEquipmentNew() {
         <div id="eq-media-grid" style="margin-top:8px">${mediaGridHTML(eqNewMedia, 'js-eqm-del')}</div></div>
     </div>
     <div class="divider"></div>
-    <button class="btn btn-green btn-block" id="eq-save">${icon('check', 16)} حفظ المعدة</button>
+    <button class="btn btn-green btn-block" id="eq-save-inspect">${icon('check', 16)} حفظ وبدء الفحص الأول الآن</button>
+    <button class="btn btn-block" id="eq-save" style="margin-top:8px">حفظ فقط — الفحص لاحقًا</button>
+    <div class="hint" style="margin-top:8px">بعد الحفظ اطبع ملصق QR من صفحة المعدة والصقه عليها — مسح الملصق في الموقع يفتح نموذج الفحص مباشرة.</div>
   </div>`;
 }
 
@@ -2017,10 +2058,39 @@ function viewRiskNew() {
     };
     $('#ra-add').addEventListener('click', addRaRow);
     $('#ra-add2').addEventListener('click', addRaRow);
+    $('#ra-lib')?.addEventListener('click', openRiskLibrary);
     $('#ra-save').addEventListener('click', async () => {
-      if (!raDraft.activity.trim()) { toast('اكتب وصف النشاط'); return; }
-      const rows = raDraft.rows.filter(r => r.hazard.trim());
-      if (!rows.length) { toast('أضِف خطرًا واحدًا على الأقل'); return; }
+      // تحقق موجّه: نظلل الحقل الناقص بدل رسالة عامة تحيّر المستخدم
+      if (!raDraft.activity.trim()) {
+        const a = $('#ra-activity');
+        a.classList.add('field-miss'); a.focus(); a.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        a.addEventListener('input', () => a.classList.remove('field-miss'), { once: true });
+        toast('اكتب وصف النشاط أولًا — الحقل المظلل بالأحمر');
+        return;
+      }
+      // الصف «معبأ» إن كُتب فيه أي شيء — ولو نسي اسم الخطر نوجهه إليه بالضبط
+      const touched = raDraft.rows.filter(r => (r.hazard + (r.consequence || '') + r.control).trim());
+      const missingHz = touched.filter(r => !r.hazard.trim());
+      if (missingHz.length) {
+        let first = null;
+        $$('.js-hz').forEach(el => {
+          const r = raDraft.rows[+el.dataset.i];
+          if (touched.includes(r) && !r.hazard.trim()) {
+            el.classList.add('field-miss');
+            el.addEventListener('input', () => el.classList.remove('field-miss'), { once: true });
+            if (!first) first = el;
+          }
+        });
+        if (first) { first.focus(); first.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+        toast('اكتب اسم الخطر في السطر الأول من البطاقة المظللة — بقية ما كتبته محفوظ');
+        return;
+      }
+      const rows = touched;
+      if (!rows.length) {
+        toast('أضف خطرًا واحدًا على الأقل — يدويًا أو من المكتبة الجاهزة');
+        openRiskLibrary();
+        return;
+      }
       let raSeq;
       if (CLOUD.enabled()) {
         try { raSeq = await CLOUD.nextSeq('RA'); DB.counters.RA = Math.max(DB.counters.RA, raSeq + 1); }
@@ -2064,9 +2134,10 @@ function viewRiskNew() {
     </div>
     <div id="ra-suggest"></div>
     <div class="divider"></div>
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
       <b style="font-size:14px">المخاطر والاحتياطات</b>
       <span class="spacer" style="flex:1"></span>
+      <button class="btn btn-sm" id="ra-lib">${icon('doc', 14)} المكتبة الجاهزة</button>
       <button class="btn btn-sm" id="ra-add">${icon('plus', 14)} إضافة خطر</button>
     </div>
     <div id="ra-rows"></div>
@@ -2074,6 +2145,45 @@ function viewRiskNew() {
     <div class="divider"></div>
     <button class="btn btn-green btn-block" id="ra-save">${icon('check', 16)} حفظ التقييم</button>
   </div>`;
+}
+
+/* مكتبة المخاطر الجاهزة — اختر نشاطًا وتُضاف مخاطره باحتياطاتها فورًا */
+function openRiskLibrary() {
+  const back = document.createElement('div');
+  back.className = 'modal-back';
+  back.innerHTML = `
+  <div class="modal">
+    <div class="modal-head">${icon('doc', 17)} مكتبة المخاطر الجاهزة<button class="x">${icon('x', 18)}</button></div>
+    <div class="modal-body">
+      <div class="hint" style="margin-bottom:10px">اختر النشاط الأقرب لعملك — تُضاف مخاطره واحتياطاته للجدول وتقدر تعدلها بحرية.</div>
+      <div class="row-list">
+      ${HSE.riskLibrary.map((L, i) => `
+        <div class="row-item js-lib-pick" data-i="${i}">
+          <div class="eq-ic">${icon('alert', 18)}</div>
+          <div class="row-main">
+            <div class="row-title">${esc(L.activity)}</div>
+            <div class="row-meta"><span>${L.rows.length} مخاطر باحتياطاتها الجاهزة</span></div>
+          </div>
+          ${icon('back', 16)}
+        </div>`).join('')}
+      </div>
+    </div>
+  </div>`;
+  document.body.appendChild(back);
+  const close = () => back.remove();
+  $('.x', back).addEventListener('click', close);
+  back.addEventListener('click', ev => { if (ev.target === back) close(); });
+  $$('.js-lib-pick', back).forEach(el => el.addEventListener('click', () => {
+    const L = HSE.riskLibrary[+el.dataset.i];
+    L.rows.forEach(r => raDraft.rows.push(raRowFromLib(r)));
+    if (!raDraft.activity.trim()) {
+      raDraft.activity = L.activity;
+      const a = $('#ra-activity'); if (a) a.value = L.activity;
+    }
+    close();
+    renderRaRows();
+    toast(`أُضيفت ${L.rows.length} مخاطر من المكتبة — عدّلها كما يناسب موقعك`);
+  }));
 }
 
 function renderRaSuggest() {
@@ -2096,7 +2206,7 @@ function renderRaSuggest() {
 function renderRaRows() {
   const box = $('#ra-rows'); if (!box) return;
   if (!raDraft.rows.length) {
-    box.innerHTML = `<div class="empty" style="padding:18px">اكتب النشاط بالأعلى لعرض الاقتراحات، أو أضف المخاطر يدويًا</div>`;
+    box.innerHTML = `<div class="empty" style="padding:18px">ابدأ بأسرع طريقة: زر «المكتبة الجاهزة» يعبي المخاطر والاحتياطات تلقائيًا<br>أو «إضافة خطر» للكتابة يدويًا</div>`;
     return;
   }
   const sel5 = (cls, i, val) =>

@@ -265,7 +265,7 @@ function regFieldHTML(f, val) {
   switch (f.type) {
     case 'textarea': return `<div class="field full"><label>${esc(f.ar)}${f.req ? ' *' : ''}</label><textarea class="js-rf" data-k="${f.k}">${esc(v)}</textarea></div>`;
     case 'date': return `<div class="field"><label>${esc(f.ar)}</label><input type="date" class="js-rf" data-k="${f.k}" value="${esc(v || todayISO())}"></div>`;
-    case 'time': return `<div class="field"><label>${esc(f.ar)}</label><input type="time" class="js-rf" data-k="${f.k}" value="${esc(v)}"></div>`;
+    case 'time': return `<div class="field"><label>${esc(f.ar)}</label><input type="time" class="js-rf" data-k="${f.k}" value="${esc(v || new Date().toTimeString().slice(0, 5))}"></div>`;
     case 'number': return `<div class="field"><label>${esc(f.ar)}${f.req ? ' *' : ''}</label><input type="number" step="any" class="js-rf" data-k="${f.k}" value="${esc(v)}" dir="ltr"></div>`;
     case 'building': return `<div class="field"><label>${esc(f.ar)}</label><select class="js-rf js-bld" data-k="${f.k}">${bldOptionsHTML(v)}</select></div>`;
     case 'emp': return `<div class="field"><label>${esc(f.ar)}</label><select class="js-rf" data-k="${f.k}">${DB.employees.filter(e => e.active && e.role !== '_config').map(e => `<option ${e.name === v ? 'selected' : ''}>${esc(e.name)}</option>`).join('')}</select></div>`;

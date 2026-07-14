@@ -681,6 +681,40 @@ a.quick-add b { font-size: 14.5px; }
 }
 .qa-hint { display: block; margin-top: 9px; font-size: 11.5px; color: var(--amber-ink); opacity: .85; }
 
+/* ---------- توجيه المستخدم للحقل الناقص ---------- */
+.field-miss {
+  outline: 2px solid var(--red) !important;
+  border-radius: 6px;
+  background: var(--red-soft) !important;
+  animation: miss-pulse .5s ease 2;
+}
+@keyframes miss-pulse { 50% { outline-color: transparent; } }
+.ck-item.ck-miss {
+  outline: 2px solid var(--red);
+  outline-offset: -2px;
+  border-radius: 8px;
+  background: var(--red-soft);
+}
+
+/* شريط تقدم الفحص */
+.ins-progress {
+  position: sticky; top: calc(var(--header-h) + 8px); z-index: 5;
+  background: var(--ink); color: #fff;
+  border-radius: 20px;
+  padding: 7px 16px;
+  font-size: 12.5px; font-weight: 700;
+  width: max-content; max-width: 100%;
+  margin: 0 auto 12px;
+  box-shadow: 0 2px 10px rgba(25, 27, 31, .25);
+}
+.ins-progress.done { background: var(--green); }
+
+/* أزرار نتيجة الفحص — تلوين واضح للاختيار */
+.js-res { border-width: 1.5px; font-weight: 700; }
+.js-res.res-fit.on { background: var(--green); border-color: var(--green); color: #fff; }
+.js-res.res-partial.on { background: var(--amber); border-color: var(--amber); color: var(--ink); }
+.js-res.res-unfit.on { background: var(--red); border-color: var(--red); color: #fff; }
+
 /* سلم الاعتماد */
 .ladder-step {
   display: flex; align-items: center; gap: 10px;
