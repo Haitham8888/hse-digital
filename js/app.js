@@ -321,6 +321,7 @@ function ensureRolesConfig() {
   cfg.list = cfg.list || []; cfg.overrides = cfg.overrides || {}; cfg.hidden = cfg.hidden || [];
   if (!cfg.chain || !cfg.chain.length) cfg.chain = HSE.chain.map(c => c.key);
   if (!cfg.buildings || !cfg.buildings.length) cfg.buildings = HSE.buildings.slice();
+  if (!cfg.companies || !cfg.companies.length) cfg.companies = HSE.companies.slice();
   return cfg;
 }
 function buildingsList() {
@@ -328,61 +329,99 @@ function buildingsList() {
   return (cfg && cfg.buildings && cfg.buildings.length) ? cfg.buildings : HSE.buildings;
 }
 
-/* ---------- إدارة المواقع من داخل القوائم نفسها ----------
-   كل قائمة «المبنى / الموقع» في النماذج تحمل class js-bld:
-   آخر خيارين فيها = إضافة موقع جديد / فتح نافذة الإدارة */
-function bldOptionsHTML(sel) {
-  const opts = buildingsList().map(b =>
+/* ---------- قوائم قابلة للإدارة من داخل النماذج نفسها ----------
+   المواقع (js-bld) والجهات (js-co): آخر خيارين في كل قائمة =
+   إضافة عنصر جديد / فتح نافذة الإدارة (إضافة، تعديل، حذف) */
+const INLINE_LISTS = {
+  bld: {
+    cls: 'js-bld', key: 'buildings', icon: 'grid', mono: true,
+    list: () => buildingsList(),
+    title: 'إدارة المواقع / المباني', one: 'الموقع',
+    add: '+ إضافة موقع جديد…', mng: '⚙ إدارة المواقع…',
+    ask: 'اسم الموقع الجديد: (مثال B11، المستودع…)',
+    ph: 'موقع جديد… (B11، المستودع…)',
+    hint: 'القائمة تُستخدم في كل النماذج: التصاريح والمعدات والتقييمات وكل السجلات — والسجلات المحفوظة تحتفظ بموقعها المكتوب كما هو.',
+  },
+  co: {
+    cls: 'js-co', key: 'companies', icon: 'user', mono: false,
+    list: () => companiesList(),
+    title: 'إدارة الجهات / الشركات', one: 'الجهة',
+    add: '+ إضافة جهة جديدة…', mng: '⚙ إدارة الجهات…',
+    ask: 'اسم الجهة الجديدة: (مثال شركة مقاولات باطن…)',
+    ph: 'جهة جديدة… (اسم الشركة أو الجهة)',
+    hint: 'الجهات تظهر عند إضافة الموظفين وتُعرض في بطاقاتهم وسلاسل الاعتماد — والموظفون الحاليون يحتفظون بجهتهم المسجلة كما هي.',
+  },
+};
+function companiesList() {
+  const cfg = rolesConfig();
+  return (cfg && cfg.companies && cfg.companies.length) ? cfg.companies : HSE.companies;
+}
+function listOptionsHTML(kind, sel) {
+  const L = INLINE_LISTS[kind];
+  const opts = L.list().map(b =>
     `<option value="${esc(b)}" ${b === sel ? 'selected' : ''}>${esc(b)}</option>`).join('');
   const tools = canCreate() ? `
     <option disabled>─────────</option>
-    <option value="__add">+ إضافة موقع جديد…</option>
-    <option value="__mng">⚙ إدارة المواقع…</option>` : '';
+    <option value="__add">${L.add}</option>
+    <option value="__mng">${L.mng}</option>` : '';
   return opts + tools;
 }
-function refreshBldSelects() {
-  $$('select.js-bld').forEach(s => {
-    const cur = (!s.value || s.value.startsWith('__')) ? (s.dataset.prev || '') : s.value;
-    s.innerHTML = bldOptionsHTML(cur);
-    if (cur && buildingsList().includes(cur)) s.value = cur;
-    s.dataset.prev = s.value;
+function bldOptionsHTML(sel) { return listOptionsHTML('bld', sel); }
+function coOptionsHTML(sel) { return listOptionsHTML('co', sel); }
+function refreshListSelects() {
+  Object.keys(INLINE_LISTS).forEach(kind => {
+    const L = INLINE_LISTS[kind];
+    $$('select.' + L.cls).forEach(s => {
+      const cur = (!s.value || s.value.startsWith('__')) ? (s.dataset.prev || '') : s.value;
+      s.innerHTML = listOptionsHTML(kind, cur);
+      if (cur && L.list().includes(cur)) s.value = cur;
+      s.dataset.prev = s.value;
+    });
   });
+}
+function inlineListKind(s) {
+  return Object.keys(INLINE_LISTS).find(k => s.classList.contains(INLINE_LISTS[k].cls)) || null;
 }
 function bindBldTools() {
   // تُستدعى مرة واحدة عند الإقلاع — استماع مفوَّض يعمل مع كل نموذج حالي أو قادم
   document.addEventListener('pointerdown', ev => {
-    const s = ev.target && ev.target.closest && ev.target.closest('select.js-bld');
+    const s = ev.target && ev.target.closest && ev.target.closest('select.js-bld, select.js-co');
     if (s && s.value && !s.value.startsWith('__')) s.dataset.prev = s.value;
   }, true);
   document.addEventListener('change', ev => {
     const s = ev.target;
-    if (!(s instanceof HTMLSelectElement) || !s.classList.contains('js-bld')) return;
-    const prev = s.dataset.prev || buildingsList()[0] || '';
+    if (!(s instanceof HTMLSelectElement)) return;
+    const kind = inlineListKind(s);
+    if (!kind) return;
+    const L = INLINE_LISTS[kind];
+    const prev = s.dataset.prev || L.list()[0] || '';
     if (s.value === '__add') {
-      const v = (prompt('اسم الموقع الجديد: (مثال B11، المستودع…)') || '').trim();
+      const v = (prompt(L.ask) || '').trim();
       if (v) {
         const cfg = ensureRolesConfig();
-        if (!cfg.buildings.includes(v)) cfg.buildings.push(v);
+        cfg[L.key] = cfg[L.key] || [];
+        if (!cfg[L.key].includes(v)) cfg[L.key].push(v);
         saveDB(); CLOUD.push('employees', cfg);
-        refreshBldSelects();
+        refreshListSelects();
         s.value = v; s.dataset.prev = v;
         s.dispatchEvent(new Event('change', { bubbles: false }));
-        toast('أُضيف الموقع: ' + v);
+        toast(`أُضيف ${L.one}: ${v}`);
       } else { s.value = prev; }
     } else if (s.value === '__mng') {
       s.value = prev;
-      openBuildingsModal();
+      openListModal(kind);
     } else {
       s.dataset.prev = s.value;
     }
   });
 }
-function openBuildingsModal() {
+function openListModal(kind) {
+  const L = INLINE_LISTS[kind];
   const back = document.createElement('div');
   back.className = 'modal-back';
   back.innerHTML = `
   <div class="modal">
-    <div class="modal-head">${icon('grid', 17)} إدارة المواقع / المباني<button class="x">${icon('x', 18)}</button></div>
+    <div class="modal-head">${icon(L.icon, 17)} ${L.title}<button class="x">${icon('x', 18)}</button></div>
     <div class="modal-body"></div>
   </div>`;
   document.body.appendChild(back);
@@ -393,36 +432,41 @@ function openBuildingsModal() {
   const draw = () => {
     $('.modal-body', back).innerHTML = `
     <div class="qa-row" style="margin-bottom:12px">
-      <input type="text" id="bm-new" placeholder="موقع جديد… (B11، المستودع…)">
+      <input type="text" id="bm-new" placeholder="${L.ph}">
       <button class="btn btn-amber" id="bm-add">إضافة</button>
     </div>
-    ${buildingsList().map((b, i) => `
+    ${L.list().map((b, i) => `
     <div style="display:flex;gap:8px;align-items:center;padding:8px 0;border-bottom:1px dashed var(--line)">
-      <b class="mono" style="flex:1;font-size:13.5px">${esc(b)}</b>
+      <b class="${L.mono ? 'mono' : ''}" style="flex:1;font-size:13.5px">${esc(b)}</b>
       <button class="btn btn-sm js-bm-ren" data-i="${i}">${icon('pen', 13)}</button>
-      <button class="btn btn-sm js-bm-del" data-i="${i}" style="color:var(--red)" ${buildingsList().length <= 1 ? 'disabled' : ''}>${icon('x', 13)}</button>
+      <button class="btn btn-sm js-bm-del" data-i="${i}" style="color:var(--red)" ${L.list().length <= 1 ? 'disabled' : ''}>${icon('x', 13)}</button>
     </div>`).join('')}
-    <div class="hint" style="margin-top:10px">القائمة تُستخدم في كل النماذج: التصاريح والمعدات والتقييمات وكل السجلات — والسجلات المحفوظة تحتفظ بموقعها المكتوب كما هو.</div>`;
-    const mut = fn => { const cfg = ensureRolesConfig(); fn(cfg); saveDB(); CLOUD.push('employees', cfg); draw(); refreshBldSelects(); };
+    <div class="hint" style="margin-top:10px">${L.hint}</div>`;
+    const mut = fn => {
+      const cfg = ensureRolesConfig();
+      cfg[L.key] = cfg[L.key] || L.list().slice();
+      fn(cfg[L.key]);
+      saveDB(); CLOUD.push('employees', cfg); draw(); refreshListSelects();
+    };
     $('#bm-add', back).addEventListener('click', () => {
       const v = $('#bm-new', back).value.trim();
       if (!v) return;
-      mut(cfg => { if (!cfg.buildings.includes(v)) cfg.buildings.push(v); });
-      toast('أُضيف الموقع: ' + v);
+      mut(arr => { if (!arr.includes(v)) arr.push(v); });
+      toast(`أُضيف ${L.one}: ${v}`);
     });
     $('#bm-new', back).addEventListener('keydown', ev => { if (ev.key === 'Enter') $('#bm-add', back).click(); });
     $$('.js-bm-ren', back).forEach(b => b.addEventListener('click', () => {
       const i = +b.dataset.i;
-      const v = prompt('الاسم الجديد للموقع:', buildingsList()[i]);
+      const v = prompt(`الاسم الجديد لـ${L.one}:`, L.list()[i]);
       if (v === null || !v.trim()) return;
-      mut(cfg => cfg.buildings[i] = v.trim());
+      mut(arr => arr[i] = v.trim());
     }));
     $$('.js-bm-del', back).forEach(b => b.addEventListener('click', () => {
       const i = +b.dataset.i;
-      if (buildingsList().length <= 1) return;
-      if (!confirm(`حذف الموقع «${buildingsList()[i]}» من القائمة؟`)) return;
-      mut(cfg => cfg.buildings.splice(i, 1));
-      toast('حُذف الموقع');
+      if (L.list().length <= 1) return;
+      if (!confirm(`حذف «${L.list()[i]}» من القائمة؟`)) return;
+      mut(arr => arr.splice(i, 1));
+      toast(`حُذف ${L.one}`);
     }));
   };
   draw();
@@ -2453,7 +2497,7 @@ function viewTeamForm(id) {
       <div class="field"><label>الدور</label>
         <select id="emp-role">${allTeamRoles().map(r => `<option value="${r.key}" ${r.key === e.role ? 'selected' : ''}>${r.ar}${r.custom ? ' (مخصص)' : ''}</option>`).join('')}</select></div>
       <div class="field"><label>الجهة</label>
-        <select id="emp-company">${HSE.companies.map(c => `<option ${c === e.company ? 'selected' : ''}>${c}</option>`).join('')}</select></div>
+        <select id="emp-company" class="js-co">${coOptionsHTML(e.company)}</select></div>
       <div class="field full"><label>الجوال <small>(بصيغة دولية لتنبيهات واتساب — اختياري)</small></label>
         <input type="text" id="emp-phone" value="${esc(e.phone)}" dir="ltr" placeholder="9665XXXXXXXX"></div>
       <div class="field full"><label>البريد الإلكتروني <small>(يصله إشعار تلقائي عندما يكون الدور عليه — اختياري)</small></label>
