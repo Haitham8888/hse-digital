@@ -93,7 +93,20 @@ function migrateDB() {
     });
     DB.v = 8;
   }
+  // تنظيف دائم: أي سجل عليه شاهدة حذف لا يظهر في الواجهة
+  (typeof CLOUD_ENTITIES !== 'undefined' ? CLOUD_ENTITIES : []).forEach(k => {
+    if (Array.isArray(DB[k])) DB[k] = DB[k].filter(o => !o || !o.deleted);
+  });
   saveDB();
+}
+
+/* حذف موحّد لأي سجل: أدمن فقط، بتأكيد صريح، ويتزامن عبر الأجهزة */
+function deleteRecord(entity, obj, label, backHash) {
+  if (!isAdmin()) { toast('الحذف صلاحية مسؤول النظام فقط'); return; }
+  if (!confirm(`حذف ${label} نهائيًا؟\nسيختفي من كل الأجهزة ولا يمكن التراجع.`)) return;
+  CLOUD.remove(entity, obj);
+  toast(`حُذف ${label}`);
+  location.hash = backHash;
 }
 
 // إنشاء الطلبات (تصاريح/تقييمات/معدات): الأدمن ومنشئو التصاريح فقط —
@@ -1258,6 +1271,7 @@ function viewPermitDetail(id) {
       ${CLOUD.enabled() && (st === 'approved' || st === 'closed') ? `<button class="btn" id="a-archive">${icon('doc', 15)} ${tr('archiveDrive')}</button>` : ''}
       ${p.driveUrl ? `<a class="btn btn-ghost" href="${esc(p.driveUrl)}" target="_blank" rel="noopener">${icon('doc', 15)} النسخة المؤرشفة في Drive</a>` : ''}
       <button class="btn btn-ghost" id="a-copy">${icon('copy', 15)} ${tr('copyLink')}</button>
+      ${isAdmin() ? `<button class="btn btn-ghost" id="a-del" style="color:var(--red)">${icon('x', 15)} حذف التصريح</button>` : ''}
     </div>
     ${myTurn ? `<div class="hint" style="margin-top:8px">أنت الآن بدور: <b>${roleAr(role)}</b> — توقيعك سيُسجَّل بالاسم والتاريخ والوقت.</div>` : ''}
   </div>`;
@@ -1265,6 +1279,8 @@ function viewPermitDetail(id) {
 
 function bindPermitDetail(p) {
   const on = (id, fn) => { const el = $(id); if (el) el.addEventListener('click', fn); };
+
+  on('#a-del', () => deleteRecord('permits', p, `التصريح ${permitCode(p)}`, '#/permits'));
 
   on('#a-sign', () => openSignature({
     title: `توقيع ${roleAr(DB.currentRole)}`,
@@ -1643,6 +1659,18 @@ function viewEquipmentDetail(id) {
       e.media.splice(+b.dataset.i, 1);
       saveDB(); CLOUD.push('equipment', e); render();
     }));
+    // حذف فحص واحد من السجل (أدمن)
+    $$('.js-ins-del').forEach(b => b.addEventListener('click', ev => {
+      ev.stopPropagation();
+      const ins = e.inspections[+b.dataset.idx];
+      if (!confirm(`حذف الفحص ${ins.clNo || ''} بتاريخ ${fmtDate(ins.date)}؟`)) return;
+      e.inspections.splice(+b.dataset.idx, 1);
+      saveDB(); CLOUD.push('equipment', e); render();
+      toast('حُذف الفحص');
+    }));
+    // حذف المعدة كاملة (أدمن)
+    $('#eq-del')?.addEventListener('click', () =>
+      deleteRecord('equipment', e, `المعدة ${e.code} وكل فحوصاتها`, '#/equipment'));
   };
 
   return `
@@ -1689,10 +1717,14 @@ function viewEquipmentDetail(id) {
           </div>
           <span class="insp-badge ${R.cls}">${R.en}</span>
           <button class="btn btn-sm js-ins-print" data-idx="${idx}">${icon('print', 14)}</button>
+          ${isAdmin() ? `<button class="btn btn-sm js-ins-del" data-idx="${idx}" style="color:var(--red)">${icon('x', 13)}</button>` : ''}
         </div>`;
       }).join('') : `<div class="empty">لا توجد فحوصات مسجلة</div>`}
     </div>
-  </div>`;
+  </div>
+  ${isAdmin() ? `<div class="card card-pad"><div class="action-bar">
+    <button class="btn btn-ghost" id="eq-del" style="color:var(--red)">${icon('x', 15)} حذف المعدة وكل فحوصاتها</button>
+  </div></div>` : ''}`;
 }
 
 let inspDraft = null;
@@ -2254,7 +2286,10 @@ function renderRaRows() {
 function viewRiskDetail(id) {
   const ra = DB.assessments.find(x => x.id === id);
   if (!ra) return `<div class="empty">التقييم غير موجود</div>`;
-  afterRender = () => { $('#ra-print')?.addEventListener('click', () => printRA(ra)); };
+  afterRender = () => {
+    $('#ra-print')?.addEventListener('click', () => printRA(ra));
+    $('#ra-del')?.addEventListener('click', () => deleteRecord('assessments', ra, `التقييم ${raRefNo(ra)}`, '#/risk'));
+  };
   return `
   <div class="page-head">
     <a class="btn btn-ghost btn-sm" href="#/risk" style="padding-inline:6px">${icon('back', 18)}</a>
@@ -2275,7 +2310,10 @@ function viewRiskDetail(id) {
       <div class="rr-ctl">${esc(r.control)}</div>
       <div style="margin-top:6px;font-size:11.5px;color:var(--mut)">المتبقي بعد الاحتياطات: ${riskScore(r.resP ?? 1, r.resS ?? (r.s ?? r.sev))}</div>
     </div>`).join('')}
-  </div>`;
+  </div>
+  ${isAdmin() ? `<div class="card card-pad"><div class="action-bar">
+    <button class="btn btn-ghost" id="ra-del" style="color:var(--red)">${icon('x', 15)} حذف التقييم</button>
+  </div></div>` : ''}`;
 }
 
 /* نموذج تقييم المخاطر — مطابق لقالب RISK ASSESSMENT (RBC-HSE-###) */

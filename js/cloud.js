@@ -72,8 +72,13 @@ const CLOUD = {
   // الخادم هو مصدر الحقيقة — لا يبقى محليًا إلا ما ينتظر رفعه في الطابور
   applyServer(server) {
     const queued = new Set(this.queue().map(q => q.entity + ':' + q.id));
+    // حذف بانتظار الرفع: لا يعيده السحب الدوري ولو ما زال الخادم يعرفه
+    const queuedDel = new Set(this.queue().filter(q => q.data && q.data.deleted).map(q => q.entity + ':' + q.id));
     CLOUD_ENTITIES.forEach(k => {
-      const byId = new Map((server[k] || []).map(o => [String(o.id), o]));
+      // المحذوف (شاهدة deleted) لا يُعاد للواجهة إطلاقًا
+      const byId = new Map((server[k] || [])
+        .filter(o => !o.deleted && !queuedDel.has(k + ':' + o.id))
+        .map(o => [String(o.id), o]));
       (DB[k] || []).forEach(lo => {
         if (queued.has(k + ':' + lo.id)) byId.set(String(lo.id), lo);
       });
@@ -106,6 +111,22 @@ const CLOUD = {
     this.drain();
   },
 
+  // حذف سجل: يُشال محليًا فورًا وتُرفع «شاهدة حذف» للخادم
+  // فيختفي من كل الأجهزة في السحبة التالية (يبقى صف الأرشفة في الشيت للتدقيق)
+  remove(entity, obj) {
+    obj.deleted = true;
+    obj.updatedAt = new Date().toISOString();
+    const arr = DB[entity] || [];
+    const i = arr.findIndex(o => String(o.id) === String(obj.id));
+    if (i > -1) arr.splice(i, 1);
+    saveDB();
+    if (!this.enabled()) return;
+    const q = this.queue().filter(x => !(x.entity === entity && String(x.id) === String(obj.id)));
+    q.push({ entity, id: obj.id, ts: Date.now(), data: obj });
+    this.setQueue(q);
+    this.drain();
+  },
+
   async drain() {
     if (!this.enabled() || this._draining) return;
     this._draining = true;
@@ -115,7 +136,7 @@ const CLOUD = {
         const q = this.queue();
         if (!q.length) break;
         const item = q[0];
-        const obj = (DB[item.entity] || []).find(o => String(o.id) === String(item.id));
+        const obj = item.data || (DB[item.entity] || []).find(o => String(o.id) === String(item.id));
         if (obj) await this.api({ action: 'upsert', entity: item.entity, data: obj });
         // احذف هذا الإدخال تحديدًا — إن أُعيد إدراجه أثناء الرفع (ts أحدث) يُرفع مجددًا بأحدث نسخة
         const q2 = this.queue();

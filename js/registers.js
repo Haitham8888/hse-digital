@@ -411,6 +411,7 @@ function viewRegDetail(key, id) {
   afterRender = () => {
     $('#rg-print')?.addEventListener('click', () => printReg(key, r));
     $('#rg-archive')?.addEventListener('click', () => archiveReg(key, r, false));
+    $('#rg-del')?.addEventListener('click', () => deleteRecord(c.entity, r, `${c.one} ${r.refNo}`, `#/reg/${key}`));
     $('#rg-close')?.addEventListener('click', () => {
       const note = prompt('ملاحظة الإغلاق (الإجراء التصحيحي المنفذ):', '') ?? '';
       r.status = 'closed'; r.closedAt = new Date().toISOString(); r.closeNote = note;
@@ -531,6 +532,7 @@ function viewRegDetail(key, id) {
     <button class="btn" id="rg-print">${icon('print', 15)} PDF / طباعة</button>
     ${CLOUD.enabled() ? `<button class="btn" id="rg-archive">${icon('doc', 15)} أرشفة في «${esc(c.folder)}»</button>` : ''}
     ${r.driveUrl ? `<a class="btn btn-ghost" href="${esc(r.driveUrl)}" target="_blank" rel="noopener">النسخة المؤرشفة</a>` : ''}
+    ${isAdmin() ? `<button class="btn btn-ghost" id="rg-del" style="color:var(--red)">${icon('x', 15)} حذف السجل</button>` : ''}
   </div>
   ${r.closeNote ? `<div class="hint" style="margin-top:8px"><b>ملاحظة الإغلاق:</b> ${esc(r.closeNote)}</div>` : ''}</div>`;
 }
