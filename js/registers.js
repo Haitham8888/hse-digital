@@ -267,7 +267,7 @@ function regFieldHTML(f, val) {
     case 'date': return `<div class="field"><label>${esc(f.ar)}</label><input type="date" class="js-rf" data-k="${f.k}" value="${esc(v || todayISO())}"></div>`;
     case 'time': return `<div class="field"><label>${esc(f.ar)}</label><input type="time" class="js-rf" data-k="${f.k}" value="${esc(v)}"></div>`;
     case 'number': return `<div class="field"><label>${esc(f.ar)}${f.req ? ' *' : ''}</label><input type="number" step="any" class="js-rf" data-k="${f.k}" value="${esc(v)}" dir="ltr"></div>`;
-    case 'building': return `<div class="field"><label>${esc(f.ar)}</label><select class="js-rf" data-k="${f.k}">${buildingsList().map(b => `<option ${b === v ? 'selected' : ''}>${esc(b)}</option>`).join('')}</select></div>`;
+    case 'building': return `<div class="field"><label>${esc(f.ar)}</label><select class="js-rf js-bld" data-k="${f.k}">${bldOptionsHTML(v)}</select></div>`;
     case 'emp': return `<div class="field"><label>${esc(f.ar)}</label><select class="js-rf" data-k="${f.k}">${DB.employees.filter(e => e.active && e.role !== '_config').map(e => `<option ${e.name === v ? 'selected' : ''}>${esc(e.name)}</option>`).join('')}</select></div>`;
     case 'radio': return `<div class="field full"><label>${esc(f.ar)}</label><div style="display:flex;flex-wrap:wrap;gap:8px">${f.opts.map(o =>
       `<label class="chip" style="cursor:pointer;padding:6px 12px"><input type="radio" name="rf-${f.k}" class="js-rfr" data-k="${f.k}" value="${esc(o)}" ${o === v ? 'checked' : ''} style="margin-inline-end:5px">${esc(o)}</label>`).join('')}</div></div>`;
